@@ -1,11 +1,11 @@
 ---
 name: info-collector-analyst
-description: "프로젝트 규모(Level 1~4)를 사전 판정하고, 다양한 소스에서 정보를 수집하여 RAG 및 멀티 에이전트 아키텍처 설계를 위한 심층 분석 리포트를 구조화합니다."
+description: "프로젝트 규모(Level 1~4)를 사전 판정하고, 다양한 소스에서 정보를 수집하여 아키텍처 설계를 위한 심층 분석 리포트를 구조화합니다."
 version: 1.0.0
 created: 2026-02-21
 platforms: [claude-code]
 category: analysis
-tags: [analysis, rag, multi-agent, scale-assessment, scaffolding]
+tags: [analysis, scale-assessment, architecture, project-planning]
 metadata:
   model: opus
 ---
@@ -14,13 +14,13 @@ metadata:
 
 ## Purpose
 
-프로젝트 시작 전 규모를 체계적으로 판정하고, 다양한 소스(로컬 문서, 웹, 사용자 입력)에서 정보를 수집하여 하위 설계 에이전트(Architect, Builder)에게 전달할 수 있는 구조화된 분석 리포트를 생성합니다. LLM 추론을 극대화하여 표면적 요구사항 이면의 잠재적 문제점까지 도출합니다.
+프로젝트 시작 전 규모를 체계적으로 판정하고, 다양한 소스(로컬 문서, 웹, 사용자 입력)에서 정보를 수집하여 설계 및 개발 팀에게 전달할 수 있는 구조화된 분석 리포트를 생성합니다. LLM 추론을 극대화하여 표면적 요구사항 이면의 잠재적 문제점까지 도출합니다.
 
 ## When to Use This Skill
 
 - 새 프로젝트를 시작할 때 규모와 아키텍처 방향을 결정해야 할 때
 - 기획 문서, PDF, PPT 등에서 요구사항을 체계적으로 수집/분석해야 할 때
-- RAG 파이프라인이나 멀티 에이전트 시스템 설계를 위한 사전 분석이 필요할 때
+- 복잡한 시스템 설계를 위한 사전 분석이 필요할 때
 - 프로젝트의 기능/비기능 요구사항을 구조화된 형태로 정리해야 할 때
 
 ## Do Not Use This Skill
@@ -58,9 +58,9 @@ metadata:
 
 Phase 0에서 결정된 Level에 맞춰 정보를 수집합니다.
 
-1. **로컬 문서 탐색**: `Read`, `Glob` 도구를 활용하여 프로젝트 디렉토리 내 기획 문서, PDF, PPT 등을 탐색합니다.
-2. **웹 리서치**: `WebSearch`, `WebFetch` 도구를 활용하여 관련 기술 스택, 유사 시스템 사례를 조사합니다.
-3. **사용자 질의**: `AskUserQuestion`으로 Phase 0에서 결정된 Level에 맞는 추가 인프라/보안 요구사항을 확인합니다.
+1. **로컬 문서 탐색**: `Read`, `Glob` 도구를 활용하여 프로젝트 디렉토리 내 관련 문서를 탐색합니다.
+2. **웹 리서치**: `WebSearch`, `WebFetch` 도구를 활용하여 기술 스택, 유사 사례, 모범 사례를 조사합니다.
+3. **사용자 질의**: `AskUserQuestion`으로 Phase 0에서 결정된 Level에 맞는 추가 기술/운영 요구사항을 확인합니다.
 
 ### Phase 2: 심층 추론 및 컨텍스트 증류 (Deep Inference & Distillation)
 
@@ -80,9 +80,9 @@ Phase 0에서 결정된 Level에 맞춰 정보를 수집합니다.
    - Phase 0에서 도출된 총점, Level, 권장 아키텍처
    - 선택 근거 및 대안 비교
 
-2. **도메인 및 시스템 개요**
-   - 분야, 사용자 유형, 주요 보안 사항
-   - 핵심 도메인 용어 정의
+2. **시스템 개요 및 맥락**
+   - 프로젝트 목표, 사용자 유형, 주요 제약사항
+   - 핵심 용어 및 개념 정의
 
 3. **핵심 기능 및 비기능 정의**
    - 판정된 Level에 부합하는 수준의 기능/비기능 명세
@@ -110,22 +110,22 @@ Phase 0에서 결정된 Level에 맞춰 정보를 수집합니다.
     "classification": "Large",
     "recommendedArchitecture": "Hexagonal"
   },
-  "domain": {
-    "field": "금융 감사 시스템",
-    "userTypes": ["감사관", "관리자", "시스템 운영자"],
-    "securityLevel": "High"
+  "context": {
+    "projectGoal": "프로젝트의 주요 목표",
+    "userTypes": ["사용자 유형 1", "사용자 유형 2", "사용자 유형 3"],
+    "criticalRequirements": ["필수 요구사항 1", "필수 요구사항 2", "필수 요구사항 3"]
   },
   "techStack": {
-    "frontend": "React + TypeScript",
-    "backend": "Node.js / NestJS",
-    "database": "PostgreSQL",
-    "infra": "Docker + K8s"
+    "frontend": "TBD",
+    "backend": "TBD",
+    "database": "TBD",
+    "infra": "TBD"
   },
-  "keyFeatures": ["실시간 이상 탐지", "감사 보고서 생성", "자금 흐름 분석"],
+  "keyFeatures": ["기능 1", "기능 2", "기능 3"],
   "nonFunctional": {
-    "availability": "99.9%",
-    "responseTime": "< 2s",
-    "concurrentUsers": 10000
+    "availability": "TBD",
+    "responseTime": "TBD",
+    "concurrentUsers": "TBD"
   }
 }
 ```
@@ -148,7 +148,7 @@ Phase 0에서 결정된 Level에 맞춰 정보를 수집합니다.
 ## Example Interactions
 
 - "새 프로젝트를 시작하려고 하는데 규모 판정부터 해줘"
-- "이 기획서를 분석해서 아키텍처 방향을 잡아줘"
+- "이 요구사항을 분석해서 아키텍처 방향을 잡아줘"
 - "프로젝트 요구사항을 정리해서 개발팀에 전달할 리포트를 만들어줘"
-- "RAG 시스템 설계를 위한 사전 분석을 해줘"
-- "우리 프로젝트가 마이크로서비스가 필요한 규모인지 판단해줘"
+- "복잡한 시스템 설계를 위한 사전 분석을 해줘"
+- "우리 프로젝트의 적절한 아키텍처 규모를 판단해줘"

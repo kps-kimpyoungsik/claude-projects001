@@ -1,0 +1,1126 @@
+Claude Code Agent Team - 완전 구성 가이드
+
+토큰 최적화 + 독립성 + 오케스트레이션 + 노하우 메모리 + 자동 최적화 + 실시간 모니터링
+
+
+0. 사전 요구사항
+bash# 필수 설치
+npm install -g @anthropic-ai/claude-code   # Claude Code CLI
+python3 --version                          # Python 3.11+
+git --version                              # Git 2.30+
+
+# Claude Code 로그인
+claude login
+
+# 확인
+claude --version
+
+1. 프로젝트 초기화
+bashmkdir agent-team && cd agent-team
+git init
+git commit --allow-empty -m "init"
+
+# 전체 디렉토리 구조 생성
+mkdir -p .claude
+mkdir -p orchestrator
+mkdir -p agents/{dev,test,review,docs}
+mkdir -p shared
+mkdir -p memory
+mkdir -p optimizer
+mkdir -p worktrees
+
+2. Claude Code 권한 설정
+.claude/settings.json
+json{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "MultiEdit(*)"
+    ],
+    "deny": []
+  },
+  "env": {
+    "CLAUDE_NO_PROMPT": "1"
+  }
+}
+
+3. 공유 컨텍스트 초기화
+shared/context.json
+json{
+  "project": "my-app",
+  "stack": "Node.js 20, TypeScript, PostgreSQL",
+  "conventions": {
+    "branch": "feature/{task_id}",
+    "test_framework": "jest",
+    "lint": "eslint --fix",
+    "format": "prettier --write"
+  },
+  "boundaries": {
+    "dev":    { "write": ["src/"], "read": ["src/", "shared/"] },
+    "test":   { "write": ["tests/"], "read": ["src/", "tests/", "shared/"] },
+    "review": { "write": ["reports/"], "read": ["*"] },
+    "docs":   { "write": ["docs/"], "read": ["src/", "docs/", "shared/"] }
+  },
+  "exclude_always": [
+    "node_modules", ".git", "dist", "build", "coverage", "*.lock", ".env"
+  ]
+}
+shared/tasks.json
+json[
+  {
+    "id": "task-001",
+    "role": "dev",
+    "priority": 1,
+    "depends_on": null,
+    "instruction": "src/auth/login.ts - JWT 리프레시 토큰 구현",
+    "acceptance": "토큰 만료 시 자동 재발급"
+  },
+  {
+    "id": "task-002",
+    "role": "dev",
+    "priority": 1,
+    "depends_on": null,
+    "instruction": "src/api/users.ts - 사용자 목록 페이지네이션 구현",
+    "acceptance": "cursor 기반, 최대 100건"
+  },
+  {
+    "id": "task-003",
+    "role": "test",
+    "priority": 2,
+    "depends_on": "task-001",
+    "instruction": "tests/auth/ - task-001 구현 코드 테스트 작성",
+    "acceptance": "커버리지 80% 이상"
+  },
+  {
+    "id": "task-004",
+    "role": "review",
+    "priority": 3,
+    "depends_on": "task-003",
+    "instruction": "task-001, task-003 코드 리뷰 후 reports/review-001.md 작성",
+    "acceptance": "보안/성능 이슈 체크"
+  },
+  {
+    "id": "task-005",
+    "role": "docs",
+    "priority": 2,
+    "depends_on": "task-001",
+    "instruction": "docs/api/auth.md - JWT API 문서 작성",
+    "acceptance": "OpenAPI 3.0 형식"
+  }
+]
+shared/status.json
+json{}
+
+4. 에이전트 역할 정의 (CLAUDE.md)
+agents/dev/CLAUDE.md
+markdown# [AGENT: DEV]
+
+## ROLE
+신규 기능 구현 전담. 테스트/문서/리뷰 작성 금지.
+
+## SCOPE
+- READ:  src/, shared/context.json, shared/tasks.json
+- WRITE: src/, shared/status.json (자신의 task_id만)
+- NEVER: tests/, docs/, reports/, node_modules, .git, dist
+
+## TOKEN RULES
+1. shared/context.json 로드 후 추가 탐색 최소화
+2. 대상 파일만 READ (최대 20개)
+3. 중간 설명 없이 코드 직접 작성
+4. 완료 즉시 JSON 출력 후 종료
+
+## OUTPUT FORMAT (반드시 JSON만)
+{"task_id":"...","status":"done|failed|blocked","artifacts":["경로"],"message":"한줄요약"}
+agents/test/CLAUDE.md
+markdown# [AGENT: TEST]
+
+## ROLE
+테스트 코드 작성 전담. 구현 코드 수정 금지.
+
+## SCOPE
+- READ:  src/, tests/, shared/
+- WRITE: tests/, shared/status.json (자신의 task_id만)
+- NEVER: src/ 수정, docs/, reports/, node_modules
+
+## TOKEN RULES
+1. depends_on task의 artifacts 파일만 READ
+2. 기존 테스트 패턴 파악 후 일관성 유지
+3. jest --coverage 실행 후 결과 포함
+
+## OUTPUT FORMAT (반드시 JSON만)
+{"task_id":"...","status":"done|failed|blocked","artifacts":["경로"],"coverage":"80%","message":"한줄요약"}
+agents/review/CLAUDE.md
+markdown# [AGENT: REVIEW]
+
+## ROLE
+코드 리뷰 및 품질 검사 전담. 코드 직접 수정 금지.
+
+## SCOPE
+- READ:  전체 (readonly)
+- WRITE: reports/, shared/status.json (자신의 task_id만)
+- NEVER: src/, tests/, docs/ 수정
+
+## TOKEN RULES
+1. 리뷰 대상 artifacts 파일만 READ
+2. 보안/성능/가독성 3가지 관점으로만 분석
+3. 리포트는 reports/ 디렉토리에 마크다운으로 저장
+
+## OUTPUT FORMAT (반드시 JSON만)
+{"task_id":"...","status":"done|failed","artifacts":["reports/파일명"],"issues":[],"message":"한줄요약"}
+agents/docs/CLAUDE.md
+markdown# [AGENT: DOCS]
+
+## ROLE
+API 문서 및 기술 문서 작성 전담.
+
+## SCOPE
+- READ:  src/, docs/, shared/
+- WRITE: docs/, shared/status.json (자신의 task_id만)
+- NEVER: src/, tests/ 수정, node_modules
+
+## TOKEN RULES
+1. 함수 시그니처와 JSDoc만 참조 (전체 구현 불필요)
+2. OpenAPI 3.0 형식 준수
+3. 기존 docs/ 파일 스타일 유지
+
+## OUTPUT FORMAT (반드시 JSON만)
+{"task_id":"...","status":"done|failed","artifacts":["docs/파일명"],"message":"한줄요약"}
+
+5. 노하우 메모리 DB 초기화
+memory/knowhow.json
+json{
+  "version": 1,
+  "entries": [
+    {
+      "id": "kh-001",
+      "stage": "dev",
+      "error_type": "token_overflow",
+      "trigger": "파일 탐색 범위 미지정",
+      "symptom": "node_modules 스캔 후 토큰 초과",
+      "solution": "CLAUDE.md에 NEVER scan 목록 명시",
+      "prevention_rule": "scope.exclude 필드 필수 추가",
+      "applied_count": 0,
+      "success_rate": null,
+      "created_at": "2024-01-01T00:00:00",
+      "tags": ["token", "scope", "dev"]
+    },
+    {
+      "id": "kh-002",
+      "stage": "test",
+      "error_type": "dependency_conflict",
+      "trigger": "depends_on artifacts 경로 불일치",
+      "symptom": "테스트 에이전트가 대상 파일 못 찾음",
+      "solution": "artifacts 경로를 절대경로로 통일",
+      "prevention_rule": "status.json artifacts 경로 존재 여부 사전 검증",
+      "applied_count": 0,
+      "success_rate": null,
+      "created_at": "2024-01-01T00:00:00",
+      "tags": ["dependency", "path", "test"]
+    }
+  ]
+}
+memory/error_patterns.json
+json{
+  "patterns": [
+    {
+      "id": "ep-001",
+      "regex": "token limit|context length exceeded|too many tokens",
+      "category": "token_overflow",
+      "severity": "high",
+      "auto_fix": "reduce_scope",
+      "knowhow_ref": "kh-001"
+    },
+    {
+      "id": "ep-002",
+      "regex": "No such file|FileNotFoundError|ENOENT",
+      "category": "artifact_missing",
+      "severity": "medium",
+      "auto_fix": "verify_artifacts",
+      "knowhow_ref": "kh-002"
+    },
+    {
+      "id": "ep-003",
+      "regex": "rate limit|429|too many requests",
+      "category": "api_throttle",
+      "severity": "medium",
+      "auto_fix": "exponential_backoff",
+      "knowhow_ref": null
+    },
+    {
+      "id": "ep-004",
+      "regex": "permission denied|EACCES",
+      "category": "permission_error",
+      "severity": "high",
+      "auto_fix": "check_settings_json",
+      "knowhow_ref": null
+    },
+    {
+      "id": "ep-005",
+      "regex": "timeout|timed out|deadline exceeded",
+      "category": "timeout",
+      "severity": "medium",
+      "auto_fix": "split_task",
+      "knowhow_ref": null
+    }
+  ]
+}
+memory/optimizations.json
+json{"logs": []}
+memory/agent_profiles.json
+json{}
+
+6. Optimizer 모듈
+optimizer/__init__.py
+
+optimizer/analyzer.py
+pythonimport json
+import re
+from pathlib import Path
+from datetime import datetime
+from dataclasses import dataclass, field
+
+MEMORY_DIR   = Path("memory")
+KNOWHOW_FILE = MEMORY_DIR / "knowhow.json"
+PATTERN_FILE = MEMORY_DIR / "error_patterns.json"
+
+@dataclass
+class Issue:
+    task_id:     str
+    agent:       str
+    stage:       str
+    error_type:  str
+    severity:    str
+    raw_error:   str
+    auto_fix:    str
+    knowhow_id:  str | None
+    detected_at: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+class IssueAnalyzer:
+    def __init__(self):
+        self.patterns = json.loads(PATTERN_FILE.read_text())["patterns"]
+        self.knowhow  = json.loads(KNOWHOW_FILE.read_text())["entries"]
+
+    def analyze(self, task_id, agent, stage, error_text) -> Issue | None:
+        for p in self.patterns:
+            if re.search(p["regex"], error_text, re.IGNORECASE):
+                return Issue(
+                    task_id=task_id, agent=agent, stage=stage,
+                    error_type=p["category"], severity=p["severity"],
+                    raw_error=error_text[:300], auto_fix=p["auto_fix"],
+                    knowhow_id=p.get("knowhow_ref")
+                )
+        return None
+
+    def get_knowhow(self, issue: Issue) -> dict | None:
+        if issue.knowhow_id:
+            kh = next((k for k in self.knowhow if k["id"] == issue.knowhow_id), None)
+            if kh:
+                return kh
+        return next(
+            (k for k in self.knowhow if k["error_type"] == issue.error_type), None
+        )
+
+    def get_knowhow_by_stage(self, stage: str) -> list[dict]:
+        return [k for k in self.knowhow if k["stage"] == stage
+                and k.get("success_rate") and k["success_rate"] > 0.7]
+
+    def record_result(self, issue: Issue, resolved: bool, solution: str):
+        data = json.loads(KNOWHOW_FILE.read_text())
+        for entry in data["entries"]:
+            if entry["error_type"] == issue.error_type:
+                cnt = entry["applied_count"] + 1
+                prev = entry["success_rate"] or 0
+                entry["applied_count"] = cnt
+                entry["success_rate"]  = round((prev*(cnt-1) + int(resolved)) / cnt, 3)
+                KNOWHOW_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+                return
+        # 신규 추가
+        new_id = f"kh-{len(data['entries'])+1:03d}"
+        data["entries"].append({
+            "id": new_id, "stage": issue.stage,
+            "error_type": issue.error_type, "trigger": "자동 감지",
+            "symptom": issue.raw_error[:200], "solution": solution,
+            "prevention_rule": f"{issue.auto_fix} 자동 적용",
+            "applied_count": 1, "success_rate": 1.0 if resolved else 0.0,
+            "created_at": datetime.now().isoformat(),
+            "tags": [issue.stage, issue.error_type]
+        })
+        KNOWHOW_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        print(f"  📚 새 노하우 저장: {new_id} ({issue.error_type})")
+optimizer/applier.py
+pythonimport json
+import asyncio
+from pathlib import Path
+from datetime import datetime
+from optimizer.analyzer import IssueAnalyzer, Issue
+
+AGENT_CLAUDE_MD = {
+    "dev":    Path("agents/dev/CLAUDE.md"),
+    "test":   Path("agents/test/CLAUDE.md"),
+    "review": Path("agents/review/CLAUDE.md"),
+    "docs":   Path("agents/docs/CLAUDE.md"),
+}
+OPT_LOG = Path("memory/optimizations.json")
+
+
+class AutoOptimizer:
+    def __init__(self):
+        self.analyzer = IssueAnalyzer()
+
+    async def handle(self, task: dict, error_text: str) -> dict:
+        issue = self.analyzer.analyze(task["id"], task["role"], task["role"], error_text)
+        if not issue:
+            return {"action": "none", "success": False}
+
+        print(f"\n  🔍 이슈 감지: [{issue.severity}] {issue.error_type}")
+        knowhow = self.analyzer.get_knowhow(issue)
+        if knowhow:
+            print(f"  📖 노하우: {knowhow['id']} - {knowhow['solution'][:60]}")
+
+        fix_map = {
+            "reduce_scope":        self._fix_scope,
+            "verify_artifacts":    self._fix_artifacts,
+            "exponential_backoff": self._fix_backoff,
+            "check_settings_json": self._fix_permissions,
+            "split_task":          self._fix_split,
+        }
+        handler = fix_map.get(issue.auto_fix, self._fix_generic)
+        result  = await handler(issue, task, knowhow)
+        self._log(issue, result, knowhow)
+        self.analyzer.record_result(issue, result.get("success", False), result.get("solution",""))
+        return result
+
+    async def _fix_scope(self, issue, task, knowhow):
+        md = AGENT_CLAUDE_MD.get(issue.agent)
+        if not md or not md.exists():
+            return {"action": "reduce_scope", "success": False}
+        content = md.read_text()
+        guard = "\n## AUTO TOKEN GUARD\n- NEVER scan: node_modules,.git,dist,build,coverage,*.lock\n- MAX reads: 20\n"
+        if "AUTO TOKEN GUARD" not in content:
+            md.write_text(content + guard)
+            print(f"  ✅ 스코프 축소 적용: {issue.agent}")
+        return {"action": "reduce_scope", "success": True, "solution": "스코프 제한 추가"}
+
+    async def _fix_artifacts(self, issue, task, knowhow):
+        dep_id = task.get("depends_on")
+        if not dep_id:
+            return {"action": "verify_artifacts", "success": False}
+        sf = Path("shared/status.json")
+        status = json.loads(sf.read_text())
+        artifacts = status.get(dep_id, {}).get("artifacts", [])
+        missing = [a for a in artifacts if not Path(a).exists()]
+        if missing:
+            print(f"  ⚠️  누락: {missing}")
+            status[dep_id]["needs_retry"] = True
+            sf.write_text(json.dumps(status, indent=2))
+            return {"action": "verify_artifacts", "success": False, "retry_dep": dep_id}
+        return {"action": "verify_artifacts", "success": True, "solution": "경로 확인 완료"}
+
+    async def _fix_backoff(self, issue, task, knowhow):
+        wait = 30
+        print(f"  ⏳ Rate limit - {wait}s 대기...")
+        await asyncio.sleep(wait)
+        return {"action": "exponential_backoff", "success": True, "solution": f"{wait}s 대기"}
+
+    async def _fix_permissions(self, issue, task, knowhow):
+        sf = Path(".claude/settings.json")
+        s  = json.loads(sf.read_text()) if sf.exists() else {}
+        s.setdefault("permissions", {"allow": []})
+        for p in ["Bash(*)", "Read(*)", "Write(*)", "Edit(*)"]:
+            if p not in s["permissions"]["allow"]:
+                s["permissions"]["allow"].append(p)
+        sf.write_text(json.dumps(s, indent=2))
+        return {"action": "check_settings_json", "success": True, "solution": "권한 추가"}
+
+    async def _fix_split(self, issue, task, knowhow):
+        prompt = f"다음 태스크를 2개 서브태스크로 분할. JSON 배열만 응답:\n{task['instruction']}"
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", prompt,
+            stdout=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        try:
+            subtasks = json.loads(stdout.decode().strip())
+            tf = Path("shared/tasks.json")
+            all_tasks = json.loads(tf.read_text())
+            for i, st in enumerate(subtasks):
+                st.update({"id": f"{task['id']}-sub{i+1}", "depends_on": None, "priority": task.get("priority",1)})
+                all_tasks.append(st)
+            tf.write_text(json.dumps(all_tasks, indent=2, ensure_ascii=False))
+            return {"action": "split_task", "success": True}
+        except Exception:
+            return {"action": "split_task", "success": False}
+
+    async def _fix_generic(self, issue, task, knowhow):
+        return {"action": "generic", "success": False,
+                "solution": knowhow["solution"] if knowhow else "수동 확인 필요"}
+
+    def _log(self, issue, result, knowhow):
+        data = json.loads(OPT_LOG.read_text()) if OPT_LOG.exists() else {"logs": []}
+        data["logs"].append({
+            "timestamp":  datetime.now().isoformat(),
+            "task_id":    issue.task_id,
+            "error_type": issue.error_type,
+            "auto_fix":   issue.auto_fix,
+            "knowhow_id": knowhow["id"] if knowhow else None,
+            "success":    result.get("success", False)
+        })
+        OPT_LOG.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+
+7. 오케스트레이터
+orchestrator/__init__.py
+
+orchestrator/dispatch.py
+pythonimport json
+import asyncio
+from pathlib import Path
+from datetime import datetime
+from optimizer.applier import AutoOptimizer
+
+SHARED    = Path("shared")
+TASKS_FILE  = SHARED / "tasks.json"
+STATUS_FILE = SHARED / "status.json"
+
+AGENT_CONFIG = {
+    "dev":    {"worktree": "worktrees/agent-dev"},
+    "test":   {"worktree": "worktrees/agent-test"},
+    "review": {"worktree": "worktrees/agent-review"},
+    "docs":   {"worktree": "worktrees/agent-docs"},
+}
+
+optimizer = AutoOptimizer()
+
+
+def update_status(task_id: str, status: str, agent: str, extras: dict = {}):
+    sf   = STATUS_FILE
+    data = json.loads(sf.read_text()) if sf.exists() else {}
+    data[task_id] = {
+        "status": status, "agent": agent,
+        "updated_at": datetime.now().isoformat(), **extras
+    }
+    sf.write_text(json.dumps(data, indent=2))
+
+
+async def run_agent(task: dict, retry: int = 0) -> dict:
+    MAX_RETRY = 3
+    role = task["role"]
+    cfg  = AGENT_CONFIG[role]
+
+    # 사전 예방 노하우 주입
+    prevention = ""
+    hints = optimizer.analyzer.get_knowhow_by_stage(role)
+    if hints:
+        prevention = "\n# 주의사항 (과거 이슈 기반)\n" + "\n".join(f"- {h['prevention_rule']}" for h in hints[:2])
+
+    prompt = (
+        f"ROLE_FILE: agents/{role}/CLAUDE.md\n"
+        f"CONTEXT: shared/context.json\n"
+        f"TASK: {json.dumps(task, ensure_ascii=False)}\n"
+        f"{prevention}\n"
+        f"OUTPUT FORMAT JSON만 응답. 설명 생략."
+    )
+
+    update_status(task["id"], "running", role)
+
+    proc = await asyncio.create_subprocess_exec(
+        "claude", "-p", prompt,
+        "--dangerously-skip-permissions",
+        cwd=cfg["worktree"],
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await proc.communicate()
+    output     = stdout.decode().strip()
+    error_text = stderr.decode().strip()
+
+    # 실패 감지 → 자동 최적화 → 재시도
+    is_failed = proc.returncode != 0 or '"status":"failed"' in output
+    if is_failed and retry < MAX_RETRY:
+        fix = await optimizer.handle(task, error_text or output)
+        if fix.get("success") or fix["action"] == "exponential_backoff":
+            print(f"  🔁 재시도 {retry+1}/{MAX_RETRY}: {task['id']}")
+            update_status(task["id"], "retrying", role)
+            return await run_agent(task, retry + 1)
+
+    try:
+        result = json.loads(output)
+    except json.JSONDecodeError:
+        result = {"task_id": task["id"], "status": "failed", "message": output[:200]}
+
+    update_status(task["id"], result.get("status","unknown"), role,
+                  {"artifacts": result.get("artifacts", [])})
+    return result
+
+
+async def dispatch(tasks: list[dict]) -> list[dict]:
+    independent = [t for t in tasks if not t.get("depends_on")]
+    dependent   = [t for t in tasks if t.get("depends_on")]
+
+    print(f"\n[Orchestrator] 병렬 실행: {[t['id'] for t in independent]}")
+    results = list(await asyncio.gather(*[run_agent(t) for t in independent]))
+
+    for task in sorted(dependent, key=lambda t: t.get("priority", 9)):
+        dep_id = task["depends_on"]
+        dep    = next((r for r in results if r.get("task_id") == dep_id), None)
+        sf     = json.loads(STATUS_FILE.read_text())
+        dep_st = sf.get(dep_id, {}).get("status")
+
+        if dep_st == "done":
+            print(f"[Orchestrator] 순차 실행: {task['id']} (의존 {dep_id} 완료)")
+            result = await run_agent(task)
+            results.append(result)
+        else:
+            print(f"[Orchestrator] 스킵: {task['id']} (의존 {dep_id} → {dep_st})")
+            update_status(task["id"], "skipped", task["role"])
+
+    return results
+
+8. 통합 모니터 V2
+orchestrator/monitor.py
+pythonimport json
+import time
+import os
+from pathlib import Path
+from datetime import datetime
+from collections import defaultdict
+
+FILES = {
+    "tasks":   Path("shared/tasks.json"),
+    "status":  Path("shared/status.json"),
+    "knowhow": Path("memory/knowhow.json"),
+    "opts":    Path("memory/optimizations.json"),
+}
+ST_ICON = {"pending":"⏳","running":"🔄","done":"✅","failed":"❌","skipped":"⏭️","retrying":"🔁","blocked":"🚫"}
+
+
+def load():
+    out = {}
+    for k, p in FILES.items():
+        try:
+            out[k] = json.loads(p.read_text())
+        except Exception:
+            out[k] = {} if k != "tasks" else []
+    return out
+
+
+def render():
+    d       = load()
+    tasks   = d["tasks"] if isinstance(d["tasks"], list) else []
+    status  = d["status"]
+    knowhow = d["knowhow"].get("entries", [])
+    opts    = d["opts"].get("logs", [])
+    W = 68
+
+    os.system("clear")
+    print("═" * W)
+    print(f"  🤖 Agent Team  [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
+    print("═" * W)
+
+    total    = len(tasks)
+    done_n   = sum(1 for t in tasks if status.get(t["id"],{}).get("status")=="done")
+    fail_n   = sum(1 for t in tasks if status.get(t["id"],{}).get("status")=="failed")
+    run_n    = sum(1 for t in tasks if status.get(t["id"],{}).get("status")=="running")
+    retry_n  = sum(1 for t in tasks if status.get(t["id"],{}).get("status")=="retrying")
+    pct      = int(done_n/total*36) if total else 0
+    bar      = "█"*pct + "░"*(36-pct)
+
+    print(f"\n  [{bar}] {done_n}/{total}  🔄{run_n} 🔁{retry_n} ✅{done_n} ❌{fail_n}\n")
+
+    # 태스크 테이블
+    print(f"  {'TASK':<12} {'ROLE':<8} {'STATUS':<10} {'UPDATED':<17} DEPS")
+    print(f"  {'─'*60}")
+    for t in sorted(tasks, key=lambda x: x.get("priority",9)):
+        s   = status.get(t["id"], {})
+        st  = s.get("status","pending")
+        ico = ST_ICON.get(st, "?")
+        ts  = s.get("updated_at","-")[:16]
+        dep = f"⬅ {t['depends_on']}" if t.get("depends_on") else ""
+        print(f"  {t['id']:<12} {t['role']:<8} {ico} {st:<8} {ts}  {dep}")
+
+    # 최적화 이력
+    if opts:
+        recent = opts[-4:]
+        print(f"\n  {'─'*60}")
+        print(f"  ⚡ 최적화 이력 (최근 {len(recent)}건)")
+        for o in reversed(recent):
+            ok = "✅" if o.get("success") else "❌"
+            kh = f"[{o['knowhow_id']}]" if o.get("knowhow_id") else "[신규]"
+            ts = o.get("timestamp","")[:16]
+            print(f"  {ok} {ts}  {o['error_type']:<22}→ {o['auto_fix']:<18} {kh}")
+
+    # 노하우 현황
+    if knowhow:
+        ranked = sorted(
+            [k for k in knowhow if k.get("applied_count",0) > 0],
+            key=lambda k: k["applied_count"], reverse=True
+        )[:4]
+        if ranked:
+            print(f"\n  {'─'*60}")
+            print(f"  📚 노하우 DB ({len(knowhow)}건)")
+            for k in ranked:
+                rate  = k.get("success_rate") or 0
+                bar_w = int(rate*10)
+                bar_s = "▓"*bar_w + "░"*(10-bar_w)
+                print(f"  [{k['id']}] {k['error_type']:<22} 적용:{k['applied_count']:>3}회  [{bar_s}]{rate:.0%}")
+
+    # 에이전트 성능
+    stats = defaultdict(lambda: {"done":0,"failed":0,"total":0})
+    for t in tasks:
+        s = status.get(t["id"],{})
+        r = t["role"]
+        stats[r]["total"] += 1
+        if s.get("status") == "done":   stats[r]["done"] += 1
+        elif s.get("status") == "failed": stats[r]["failed"] += 1
+
+    if any(v["total"] for v in stats.values()):
+        print(f"\n  {'─'*60}")
+        print(f"  📊 에이전트 성능")
+        for role, v in stats.items():
+            rate  = v["done"]/v["total"] if v["total"] else 0
+            bar_w = int(rate*12)
+            bar_s = "▓"*bar_w + "░"*(12-bar_w)
+            print(f"  {role:<8} [{bar_s}] {rate:.0%}  ✅{v['done']} ❌{v['failed']}")
+
+    failed_ids = [t["id"] for t in tasks if status.get(t["id"],{}).get("status")=="failed"]
+    if failed_ids:
+        print(f"\n  ⚠️  수동 확인 필요: {', '.join(failed_ids)}")
+
+    print("\n" + "═" * W)
+    return done_n < total or run_n > 0 or retry_n > 0
+
+
+def start(interval: int = 2):
+    while render():
+        time.sleep(interval)
+    render()
+    print("\n  🎉 전체 완료!")
+
+
+if __name__ == "__main__":
+    start()
+
+9. 메인 실행 파일
+run.py
+pythonimport asyncio
+import json
+from pathlib import Path
+from orchestrator.dispatch import dispatch
+
+async def main():
+    tasks = json.loads(Path("shared/tasks.json").read_text())
+    print(f"[Start] 총 {len(tasks)}개 태스크 실행")
+    results = await dispatch(tasks)
+    print("\n[완료 요약]")
+    for r in results:
+        print(f"  {r.get('task_id','?')}: {r.get('status','?')} - {r.get('message','')[:60]}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+setup.sh
+bash#!/bin/bash
+set -e
+
+echo "🚀 Agent Team 초기화..."
+
+# Git Worktree 생성
+for role in dev test review docs; do
+    if [ ! -d "worktrees/agent-$role" ]; then
+        git worktree add worktrees/agent-$role -b agent/$role 2>/dev/null || \
+        git worktree add worktrees/agent-$role agent/$role
+        echo "  ✅ worktree 생성: agent-$role"
+    fi
+done
+
+# 각 worktree에 공유 디렉토리 심볼릭 링크
+for role in dev test review docs; do
+    ln -sfn "$(pwd)/shared"   worktrees/agent-$role/shared   2>/dev/null || true
+    ln -sfn "$(pwd)/memory"   worktrees/agent-$role/memory   2>/dev/null || true
+    ln -sfn "$(pwd)/.claude"  worktrees/agent-$role/.claude  2>/dev/null || true
+    ln -sfn "$(pwd)/agents/$role/CLAUDE.md" worktrees/agent-$role/CLAUDE.md 2>/dev/null || true
+done
+
+# src, tests, docs, reports 디렉토리 생성
+mkdir -p src tests docs reports
+
+echo "✅ 초기화 완료"
+start.sh
+bash#!/bin/bash
+
+echo "▶️  모니터 시작..."
+python orchestrator/monitor.py &
+MONITOR_PID=$!
+
+echo "▶️  오케스트레이터 실행..."
+python run.py
+
+# 모니터 종료
+kill $MONITOR_PID 2>/dev/null
+echo "✅ 전체 완료"
+
+10. 실행 순서
+bash# 1. 초기화
+chmod +x setup.sh start.sh
+./setup.sh
+
+# 2. tasks.json에 원하는 태스크 정의
+vi shared/tasks.json
+
+# 3. 실행
+./start.sh
+
+# 또는 분리 실행 (터미널 2개)
+# 터미널 1: 모니터
+python orchestrator/monitor.py
+
+# 터미널 2: 오케스트레이터
+python run.py
+
+11. 디렉토리 최종 구조
+agent-team/
+├── .claude/
+│   └── settings.json          ← 전역 권한
+├── agents/
+│   ├── dev/CLAUDE.md          ← 개발 에이전트 역할
+│   ├── test/CLAUDE.md         ← 테스트 에이전트 역할
+│   ├── review/CLAUDE.md       ← 리뷰 에이전트 역할
+│   └── docs/CLAUDE.md         ← 문서 에이전트 역할
+├── orchestrator/
+│   ├── __init__.py
+│   ├── dispatch.py            ← 태스크 분배 + 재시도
+│   └── monitor.py             ← 실시간 대시보드
+├── optimizer/
+│   ├── __init__.py
+│   ├── analyzer.py            ← 에러 패턴 분석
+│   └── applier.py             ← 자동 최적화 적용
+├── memory/
+│   ├── knowhow.json           ← 노하우 누적 DB
+│   ├── error_patterns.json    ← 에러 패턴 정의
+│   ├── optimizations.json     ← 최적화 적용 이력
+│   └── agent_profiles.json    ← 에이전트 성능 프로파일
+├── shared/
+│   ├── context.json           ← 공유 프로젝트 컨텍스트
+│   ├── tasks.json             ← 태스크 큐
+│   └── status.json            ← 실시간 상태
+├── worktrees/
+│   ├── agent-dev/             ← dev 전용 Git Worktree
+│   ├── agent-test/            ← test 전용
+│   ├── agent-review/          ← review 전용
+│   └── agent-docs/            ← docs 전용
+├── src/                       ← 실제 소스코드
+├── tests/                     ← 테스트 코드
+├── docs/                      ← 문서
+├── reports/                   ← 리뷰 리포트
+├── run.py                     ← 메인 진입점
+├── setup.sh                   ← 초기화 스크립트
+└── start.sh                   ← 실행 스크립트
+
+12. 10 Step 자동 진행 + 체크포인트 검증 설정
+개념
+Step 1~10 자동 실행 (무중단)
+        ↓
+   Checkpoint (검증 요청)
+        ↓ 승인
+Step 11~20 자동 실행
+        ↓
+   Checkpoint ...
+
+CLAUDE.md 전역 실행 규칙 (agents/GLOBAL_RULES.md)
+markdown# GLOBAL EXECUTION RULES
+
+## 자동 실행 정책
+- 태스크(작업) 완료 시마다 step +1 카운트
+- 10 task 완료마다 STOP하고 shared/checkpoint.json에 검증 요청 기록
+- 검증 승인 전까지 다음 작업 절대 진행 금지
+- 각 작업 완료 시 shared/progress.json 업데이트 필수
+
+## Step 카운트 기준 (작업 완료 단위)
+- 태스크 1개 완료: +1
+- 서브태스크 1개 완료: +1
+- 재시도 후 성공: +1
+
+shared/checkpoint.json (초기값)
+json{
+  "current_step": 0,
+  "checkpoint_interval": 10,
+  "last_checkpoint": 0,
+  "status": "running",
+  "pending_verification": false,
+  "checkpoints": []
+}
+shared/progress.json (초기값)
+json{
+  "steps": [],
+  "total_count": 0
+}
+
+orchestrator/checkpoint.py
+pythonimport json
+import asyncio
+from pathlib import Path
+from datetime import datetime
+
+CP_FILE  = Path("shared/checkpoint.json")
+PRG_FILE = Path("shared/progress.json")
+INTERVAL = 10  # N step마다 검증
+
+
+class CheckpointManager:
+    def __init__(self, interval: int = INTERVAL):
+        self.interval = interval
+        self._ensure_files()
+
+    def _ensure_files(self):
+        if not CP_FILE.exists():
+            CP_FILE.write_text(json.dumps({
+                "current_step": 0,
+                "checkpoint_interval": self.interval,
+                "last_checkpoint": 0,
+                "status": "running",
+                "pending_verification": False,
+                "checkpoints": []
+            }, indent=2))
+        if not PRG_FILE.exists():
+            PRG_FILE.write_text(json.dumps({"steps": [], "total_count": 0}, indent=2))
+
+    def record_step(self, task_id: str, action: str, detail: str):
+        """태스크 완료 시마다 step 기록"""
+        cp  = json.loads(CP_FILE.read_text())
+        prg = json.loads(PRG_FILE.read_text())
+
+        cp["current_step"] += 1
+        prg["total_count"] += 1
+        prg["steps"].append({
+            "step":    cp["current_step"],
+            "task_id": task_id,
+            "action":  action,   # "task_done" | "subtask_done" | "retry_success"
+            "detail":  detail,
+            "time":    datetime.now().isoformat()
+        })
+
+        CP_FILE.write_text(json.dumps(cp, indent=2))
+        PRG_FILE.write_text(json.dumps(prg, indent=2))
+        return cp["current_step"]
+
+    def needs_checkpoint(self) -> bool:
+        cp = json.loads(CP_FILE.read_text())
+        steps_since = cp["current_step"] - cp["last_checkpoint"]
+        return steps_since >= self.interval
+
+    def request_verification(self, task_id: str, summary: list[str]):
+        """검증 요청 등록 + 실행 일시 정지"""
+        cp  = json.loads(CP_FILE.read_text())
+        prg = json.loads(PRG_FILE.read_text())
+
+        # 최근 N step 요약
+        recent = prg["steps"][-self.interval:]
+
+        cp_entry = {
+            "checkpoint_no":  len(cp["checkpoints"]) + 1,
+            "at_step":        cp["current_step"],
+            "task_id":        task_id,
+            "summary":        summary,
+            "recent_steps":   recent,
+            "requested_at":   datetime.now().isoformat(),
+            "approved_at":    None,
+            "approved_by":    "pending"
+        }
+
+        cp["checkpoints"].append(cp_entry)
+        cp["last_checkpoint"]       = cp["current_step"]
+        cp["pending_verification"]  = True
+        cp["status"]                = "waiting_verification"
+
+        CP_FILE.write_text(json.dumps(cp, indent=2))
+        return cp_entry
+
+    async def wait_for_approval(self, timeout: int = 600) -> bool:
+        """
+        승인 대기 (폴링)
+        - 자동 승인 모드: AUTO_APPROVE=true 환경변수
+        - 수동 승인: checkpoint.json status를 'approved'로 변경
+        - timeout(초) 초과 시 자동 승인
+        """
+        import os
+        if os.getenv("AUTO_APPROVE", "false").lower() == "true":
+            self._approve("auto")
+            return True
+
+        print(f"\n{'═'*50}")
+        print(f"  🔍 검증 요청 - shared/checkpoint.json 확인 후")
+        print(f"  status 를 'approved' 또는 'rejected' 로 변경하세요")
+        print(f"  타임아웃: {timeout}초")
+        print(f"{'═'*50}\n")
+
+        for _ in range(timeout):
+            await asyncio.sleep(1)
+            cp = json.loads(CP_FILE.read_text())
+            if cp["status"] == "approved":
+                print("  ✅ 검증 승인 - 계속 진행합니다")
+                return True
+            elif cp["status"] == "rejected":
+                print("  ❌ 검증 거부 - 실행 중단")
+                return False
+
+        # 타임아웃 → 자동 승인
+        print(f"  ⏱ 타임아웃 {timeout}s - 자동 승인")
+        self._approve("timeout")
+        return True
+
+    def _approve(self, by: str = "manual"):
+        cp = json.loads(CP_FILE.read_text())
+        if cp["checkpoints"]:
+            cp["checkpoints"][-1]["approved_at"] = datetime.now().isoformat()
+            cp["checkpoints"][-1]["approved_by"] = by
+        cp["status"]               = "running"
+        cp["pending_verification"] = False
+        CP_FILE.write_text(json.dumps(cp, indent=2))
+
+orchestrator/dispatch.py 수정 (체크포인트 통합)
+python# dispatch.py의 run_agent 함수에 체크포인트 로직 추가
+
+from orchestrator.checkpoint import CheckpointManager
+
+cp_manager = CheckpointManager(interval=10)
+
+async def run_agent(task: dict, retry: int = 0) -> dict:
+    # ... 기존 프롬프트 구성 동일 ...
+
+    # 체크포인트 지시 프롬프트에 추가
+    cp_prompt = f"""
+## 실행 규칙 (필수)
+- 매 step(파일 생성/수정/명령 실행) 마다 shared/progress.json 업데이트
+- step 형식: {{"step": N, "task_id": "{task['id']}", "action": "파일생성|수정|bash", "detail": "파일명 또는 명령"}}
+- 10 step 도달 시 즉시 중단하고 shared/checkpoint.json의 pending_verification을 true로 설정
+- pending_verification=true 상태에서 절대 작업 계속하지 말것
+"""
+
+    prompt = (
+        f"ROLE_FILE: agents/{task['role']}/CLAUDE.md\n"
+        f"CONTEXT: shared/context.json\n"
+        f"TASK: {json.dumps(task, ensure_ascii=False)}\n"
+        f"{cp_prompt}\n"
+        f"OUTPUT FORMAT JSON만 응답."
+    )
+
+    update_status(task["id"], "running", task["role"])
+
+    proc = await asyncio.create_subprocess_exec(
+        "claude", "-p", prompt,
+        "--dangerously-skip-permissions",
+        cwd=AGENT_CONFIG[task["role"]]["worktree"],
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await proc.communicate()
+    output = stdout.decode().strip()
+
+    # 체크포인트 도달 감지 (작업 완료 후 체크)
+    if cp_manager.needs_checkpoint():
+        prg     = json.loads(Path("shared/progress.json").read_text())
+        recent  = prg["steps"][-10:]
+        summary = [f"[{s['action']}] {s['detail']}" for s in recent]
+
+        cp_entry = cp_manager.request_verification(task["id"], summary)
+        _print_checkpoint_report(cp_entry)
+
+        approved = await cp_manager.wait_for_approval(timeout=600)
+        if not approved:
+            update_status(task["id"], "rejected", task["role"])
+            return {"task_id": task["id"], "status": "rejected", "message": "검증 거부"}
+
+    return result
+
+
+def _print_checkpoint_report(cp: dict):
+    print(f"\n{'═'*60}")
+    print(f"  📋 체크포인트 #{cp['checkpoint_no']}  (Step {cp['at_step']})")
+    print(f"  태스크: {cp['task_id']}")
+    print(f"{'─'*60}")
+    print(f"  최근 {len(cp['recent_steps'])}개 작업:")
+    for s in cp["recent_steps"]:
+        print(f"    [{s['step']:>3}] {s['action']:<12} {s['detail']}")
+    print(f"{'─'*60}")
+    print(f"  ➡  shared/checkpoint.json → status 값 변경:")
+    print(f"     승인: 'approved'   거부: 'rejected'")
+    print(f"{'═'*60}\n")
+
+수동 승인 방법 (터미널에서)
+bash# 방법 1: jq로 직접 수정
+jq '.status = "approved"' shared/checkpoint.json > tmp.json && mv tmp.json shared/checkpoint.json
+
+# 방법 2: Python 한 줄
+python3 -c "
+import json; p=open('shared/checkpoint.json','r+')
+d=json.load(p); d['status']='approved'
+p.seek(0); json.dump(d,p,indent=2)
+"
+
+# 방법 3: 거부
+jq '.status = "rejected"' shared/checkpoint.json > tmp.json && mv tmp.json shared/checkpoint.json
+
+자동 승인 모드 (CI/CD 환경)
+bash# 모든 체크포인트 자동 승인
+AUTO_APPROVE=true ./start.sh
+
+# 또는 .env 파일
+echo "AUTO_APPROVE=true" >> .env
+
+모니터 체크포인트 패널 추가 (monitor.py 추가)
+python# render() 함수 내 기존 에이전트 성능 출력 이후 추가
+
+cp_data = {}
+cp_file = Path("shared/checkpoint.json")
+if cp_file.exists():
+    cp_data = json.loads(cp_file.read_text())
+
+if cp_data:
+    cur   = cp_data.get("current_step", 0)
+    last  = cp_data.get("last_checkpoint", 0)
+    since = cur - last
+    iv    = cp_data.get("checkpoint_interval", 10)
+    pend  = cp_data.get("pending_verification", False)
+    cps   = cp_data.get("checkpoints", [])
+    bar_w = int(since / iv * 20)
+    bar_s = "▓" * bar_w + "░" * (20 - bar_w)
+
+    print(f"\n  {'─'*60}")
+    print(f"  🔢 Step 진행 [{bar_s}] {since}/{iv}")
+
+    if pend:
+        print(f"\n  ⚠️  검증 대기 중 - checkpoint.json status → 'approved'")
+    else:
+        print(f"  다음 체크포인트까지 {iv - since} step 남음")
+
+    if cps:
+        print(f"\n  체크포인트 이력:")
+        for c in cps[-3:]:
+            by  = c.get("approved_by","pending")
+            ico = "✅" if by != "pending" else "⏳"
+            print(f"  {ico} CP#{c['checkpoint_no']}  step:{c['at_step']}  승인:{by}")
+
+실행 흐름 전체
+./start.sh
+    │
+    ├─ Task 1 완료 → step 1 기록
+    ├─ Task 2 완료 → step 2 기록
+    ├─ ...
+    ├─ Task 10 완료 → step 10 기록
+    │      → checkpoint.json pending_verification = true
+    │      → 터미널에 완료된 작업 10개 리포트 출력
+    │      → 600초 대기 (폴링)
+    │
+    ├─ 사용자: status = "approved"
+    │      → 실행 재개
+    │
+    ├─ Task 11~20 완료
+    │
+    ├─ Task 20 완료 → 재검증
+    │
+    └─ 전체 완료
+
+13. 트러블슈팅
+증상원인해결token limit exceeded에이전트가 전체 디렉토리 스캔CLAUDE.md NEVER 목록 확인, reduce_scope 자동 적용됨ENOENT 에러depends_on artifacts 경로 불일치status.json artifacts 절대경로 확인429 rate limitAPI 호출 과다exponential_backoff 자동 대기 후 재시도worktree 충돌브랜치 이미 존재git worktree remove worktrees/agent-dev 후 재실행에이전트 JSON 미반환프롬프트 지시 무시CLAUDE.md OUTPUT FORMAT 강화, JSON만 응답 반복 명시병렬 status.json 충돌동시 쓰기task_id 키로 분리되어 충돌 없음 (설계상 안전)
