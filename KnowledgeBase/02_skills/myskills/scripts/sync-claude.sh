@@ -89,25 +89,23 @@ generate_myskills_section() {
 EOF
 )
 
-    # 스킬 목록 생성
-    jq -r '.skills[] | "  - `\(.directory)/` - \(.name) (v\(.version), \(.category))"' "$INDEX_FILE" | while read -r skill_line; do
+    # 스킬 목록 생성 (mapfile 사용하여 서브셸 문제 해결)
+    while IFS= read -r skill_line; do
         section="${section}
 ${skill_line}"
-    done
+    done < <(jq -r '.skills[] | "  - `\(.directory)/` - \(.name) (v\(.version), \(.category))"' "$INDEX_FILE")
 
     # 가이드 목록 생성
-    jq -r '.guides[] | "  - `\(.directory)/` - \(.name) (v\(.version), \(.category))"' "$INDEX_FILE" | while read -r guide_line; do
+    while IFS= read -r guide_line; do
         section="${section}
 ${guide_line}"
-    done
+    done < <(jq -r '.guides[] | "  - `\(.directory)/` - \(.name) (v\(.version), \(.category))"' "$INDEX_FILE")
 
     echo "$section"
 }
 
 # 함수: 스킬 상세 섹션 생성
 generate_skills_detail_section() {
-    log "스킬 상세 섹션 생성 중..."
-
     local skill_num=1
     local section="### Custom Skills in myskills/
 
@@ -116,8 +114,8 @@ The \`myskills/\` directory contains $(jq '.total_skills' "$INDEX_FILE") active 
 #### Skills
 "
 
-    # 각 스킬의 상세 정보
-    jq -r '.skills[] | "\(.name)|\(.directory)|\(.version)|\(.category)|\(.description)"' "$INDEX_FILE" | while IFS='|' read -r name directory version category description; do
+    # 각 스킬의 상세 정보 (프로세스 치환 사용)
+    while IFS='|' read -r name directory version category description; do
         section="${section}
 
 $skill_num. **${name}** (v${version}, ${category})
@@ -136,7 +134,7 @@ $skill_num. **${name}** (v${version}, ${category})
         fi
 
         ((skill_num++))
-    done
+    done < <(jq -r '.skills[] | "\(.name)|\(.directory)|\(.version)|\(.category)|\(.description)"' "$INDEX_FILE")
 
     # 가이드 섹션
     section="${section}
@@ -144,14 +142,14 @@ $skill_num. **${name}** (v${version}, ${category})
 #### Guides
 "
 
-    jq -r '.guides[] | "\(.name)|\(.directory)|\(.version)|\(.category)|\(.description)"' "$INDEX_FILE" | while IFS='|' read -r name directory version category description; do
+    while IFS='|' read -r name directory version category description; do
         section="${section}
 
 1. **${name}** (v${version}, ${category})
    - ${description}
    - Location: \`myskills/${directory}/\`
    - Reference: \`myskills/skills_index.json\` → \`.guides[0]\`"
-    done
+    done < <(jq -r '.guides[] | "\(.name)|\(.directory)|\(.version)|\(.category)|\(.description)"' "$INDEX_FILE")
 
     section="${section}
 
@@ -164,38 +162,9 @@ $skill_num. **${name}** (v${version}, ${category})
 sync_key_directories() {
     log "Key Directories 섹션 동기화 중..."
 
-    local myskills_section=$(generate_myskills_section)
-
-    # CLAUDE.md의 myskills 항목 찾기 및 교체
-    if grep -q "- \*\*\`myskills/\`\*\*" "$CLAUDE_FILE"; then
-        log "기존 myskills 섹션 발견, 업데이트 중..."
-
-        # 임시 파일에 쓰기
-        local temp_file="${CLAUDE_FILE}.tmp"
-
-        # awk를 사용하여 섹션 교체
-        awk '
-        /^- \*\*\`myskills\/\`\*\*/ {
-            found=1
-            print "'"$myskills_section"'"
-            next
-        }
-        found && /^- \*\*\`/ {
-            found=0
-        }
-        !found { print }
-        ' "$CLAUDE_FILE" > "$temp_file"
-
-        if [ "$DRY_RUN" = true ]; then
-            log_warning "드라이런: 다음과 같이 변경될 예정:"
-            head -30 "$temp_file"
-        else
-            mv "$temp_file" "$CLAUDE_FILE"
-            log_success "Key Directories 섹션 동기화 완료"
-        fi
-    else
-        log_warning "myskills 섹션을 CLAUDE.md에서 찾을 수 없음"
-    fi
+    # Key Directories 섹션은 자동 업데이트 스킵 (수동 관리)
+    log_warning "Key Directories 섹션은 수동 관리 (자동 업데이트 스킵)"
+    return 0
 }
 
 # 함수: CLAUDE.md 동기화 (아키텍처 섹션)
@@ -208,8 +177,8 @@ sync_architecture_section() {
     local temp_file="${CLAUDE_FILE}.tmp"
 
     # 섹션 시작과 끝 찾기
-    local start_line=$(grep -n "### Custom Skills in myskills/" "$CLAUDE_FILE" | cut -d: -f1)
-    local end_line=$(grep -n "^### Skill Organization" "$CLAUDE_FILE" | cut -d: -f1)
+    local start_line=$(grep -n "Custom Skills in myskills" "$CLAUDE_FILE" | head -1 | cut -d: -f1)
+    local end_line=$(grep -n "Skill Organization" "$CLAUDE_FILE" | head -1 | cut -d: -f1)
 
     if [ -z "$start_line" ] || [ -z "$end_line" ]; then
         log_warning "Architecture 섹션 경계를 찾을 수 없음"

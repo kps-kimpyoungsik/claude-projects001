@@ -146,38 +146,35 @@ The `myskills/` directory contains 4 active skills and 1 guide collection:
 
 #### Skills
 
+
 1. **ai-team-works** (v2.0.0, system-design)
-   - Multi-agent orchestration framework for any business field
-   - 4 agent roles, 5 collaboration patterns, signal protocol
-   - 3,500+ lines with case studies and evaluation
+   - Design AI team composition, workflows, and specialist roles based on any business field requirements. Includes Claude Code agent orchestration, team interaction protocols, parallel task coordination, and enterprise-scale operations.
    - Location: `myskills/ai_team_works/`
-   - Files: SKILL.md (guide), CHANGELOG.md, 2 case studies, review report
-   - Reference: `myskills/skills_index.json` → `.skills[0]`
+   - Changelog: `myskills/ai_team_works/CHANGELOG.md`
 
-2. **skill-creator** (v1.3.0, meta)
-   - Automates skill creation workflow following Anthropic standards
-   - Location: `myskills/skill-creator/`
-
-3. **skill-creator-ext** (v2.0.0, meta)
-   - Extended creator with FMSC architecture and prompt engineering
-   - Location: `myskills/skill-creator-ext/`
-
-4. **info-collector-analyst** (v1.0.0, analysis)
-   - Project scale assessment (Level 1-4) and analysis
+2. **info-collector-analyst** (v1.0.0, analysis)
+   - 프로젝트 규모(Level 1~4)를 사전 판정하고, 다양한 소스에서 정보를 수집하여 아키텍처 설계를 위한 심층 분석 리포트를 구조화합니다.
    - Location: `myskills/info-collector-analyst/`
+
+3. **skill-creator** (v1.3.0, meta)
+   - Automates the entire skill creation workflow from brainstorming to installation. Creates new CLI skills following Anthropic's official best practices with zero manual configuration.
+   - Location: `myskills/skill-creator/`
+   - Reference: `myskills/skill-creator/README.md`
+
+4. **skill-creator-ext** (v2.0.0, meta)
+   - Extended Skill Creator utilizing FMSC (Front Matter, Master, Studio, Chain) architecture and Prompt Engineering frameworks. Creates high-quality, robust skills through a multi-agent orchestration process.
+   - Location: `myskills/skill-creator-ext/`
+   - Reference: `myskills/skill-creator-ext/README.md`
 
 #### Guides
 
+
 1. **prd-rule-guide-prompts** (v2.0.0, development-guidance)
-   - 5-phase development framework with integrated security guidelines
-   - 210 security checklist items covering OWASP Top 10, WCAG 2.1, secure coding
+   - Comprehensive PRD development rules and prompt templates with integrated security guidelines across all 5 development phases. Covers web accessibility (WCAG 2.1), web vulnerabilities (OWASP Top 10), secure coding practices, and tech stack security.
    - Location: `myskills/prd_rule__guide_prompts/`
-   - Files: SECURITY-GUIDE-INDEX.md, CHANGELOG.md, 5 phase guides
    - Reference: `myskills/skills_index.json` → `.guides[0]`
 
 **Metadata**: See `myskills/skills_index.json` for complete metadata and statistics.
-
----
 
 ### Skill Organization
 
