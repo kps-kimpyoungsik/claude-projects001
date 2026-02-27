@@ -15,7 +15,7 @@
 # 기본값: auto
 #
 
-SYNCHRONIZATION_MODE=manual
+SYNCHRONIZATION_MODE=auto
 
 ###############################################################################
 # AUTO_MODE_SETTINGS (자동 모드 설정)
@@ -108,10 +108,10 @@ SYNC_TIMEOUT=30
 #
 # 1. 모드 변경하기:
 #    # 자동 모드로 전환
-#    SYNCHRONIZATION_MODE=manual
+#    SYNCHRONIZATION_MODE=auto
 #
 #    # 수동 모드로 전환
-#    SYNCHRONIZATION_MODE=manual
+#    SYNCHRONIZATION_MODE=auto
 #
 # 2. 변경 후:
 #    git add .claude-skills-config
