@@ -1,0 +1,127 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-02-27",
+  "total_skills": 4,
+  "skills": [
+    {
+      "name": "ai-team-works",
+      "directory": "ai_team_works",
+      "description": "Design AI team composition, workflows, and specialist roles based on any business field requirements. Includes Claude Code agent orchestration, team interaction protocols, parallel task coordination, and enterprise-scale operations.",
+      "version": "2.0.0",
+      "author": "AI System Architecture Designer",
+      "created": "2026-02-26",
+      "updated": "2026-02-26",
+      "category": "system-design",
+      "platforms": ["claude-code", "github-copilot-cli", "cursor"],
+      "tags": [
+        "team-composition",
+        "workflow-automation",
+        "role-design",
+        "quality-management",
+        "ai-orchestration",
+        "agent-coordination",
+        "enterprise-scale"
+      ],
+      "is_active": true,
+      "references": {
+        "skill_file": "ai_team_works/SKILL.md",
+        "changelog": "ai_team_works/CHANGELOG.md",
+        "examples": [
+          "ai_team_works/references/example-case-1-marketing-campaign.md",
+          "ai_team_works/references/example-case-2-software-development.md"
+        ],
+        "review": "ai_team_works/references/REVIEW-AND-SUMMARY.md"
+      }
+    },
+    {
+      "name": "info-collector-analyst",
+      "directory": "info-collector-analyst",
+      "description": "프로젝트 규모(Level 1~4)를 사전 판정하고, 다양한 소스에서 정보를 수집하여 아키텍처 설계를 위한 심층 분석 리포트를 구조화합니다.",
+      "version": "1.0.0",
+      "created": "2026-02-21",
+      "updated": "2026-02-21",
+      "category": "analysis",
+      "platforms": ["claude-code"],
+      "tags": ["analysis", "scale-assessment", "architecture", "project-planning"],
+      "is_active": true,
+      "metadata": {
+        "model": "opus"
+      }
+    },
+    {
+      "name": "skill-creator",
+      "directory": "skill-creator",
+      "description": "Automates the entire skill creation workflow from brainstorming to installation. Creates new CLI skills following Anthropic's official best practices with zero manual configuration.",
+      "version": "1.3.0",
+      "author": "Eric Andrade",
+      "created": "2025-02-01",
+      "updated": "2026-02-04",
+      "category": "meta",
+      "platforms": ["github-copilot-cli", "claude-code", "codex"],
+      "tags": ["automation", "scaffolding", "skill-creation", "meta-skill"],
+      "risk": "safe",
+      "is_active": true
+    },
+    {
+      "name": "skill-creator-ext",
+      "directory": "skill-creator-ext",
+      "description": "Extended Skill Creator utilizing FMSC (Front Matter, Master, Studio, Chain) architecture and Prompt Engineering frameworks. Creates high-quality, robust skills through a multi-agent orchestration process.",
+      "version": "2.0.0",
+      "author": "Eric Andrade (Extended)",
+      "created": "2026-02-16",
+      "updated": "2026-02-16",
+      "category": "meta",
+      "platforms": ["claude-code", "github-copilot-cli"],
+      "tags": ["automation", "scaffolding", "skill-creation", "prompt-engineering", "multi-agent"],
+      "risk": "safe",
+      "is_active": true
+    }
+  ],
+  "guides": [
+    {
+      "name": "prd-rule-guide-prompts",
+      "directory": "prd_rule__guide_prompts",
+      "description": "Comprehensive PRD development rules and prompt templates with integrated security guidelines across all 5 development phases. Covers web accessibility (WCAG 2.1), web vulnerabilities (OWASP Top 10), secure coding practices, and tech stack security.",
+      "version": "2.0.0",
+      "created": "2026-02-26",
+      "updated": "2026-02-27",
+      "category": "development-guidance",
+      "is_guide": true,
+      "phases": [
+        {
+          "name": "01_analysis",
+          "description": "Project analysis phase with security guide (40 checklist items)"
+        },
+        {
+          "name": "02_design",
+          "description": "System design phase with security guide (35 checklist items)"
+        },
+        {
+          "name": "03_development",
+          "description": "Implementation phase with security guide (45 checklist items)"
+        },
+        {
+          "name": "04_testing",
+          "description": "Quality assurance phase with security guide (50 checklist items)"
+        },
+        {
+          "name": "05_review",
+          "description": "Code review phase with security guide (40 checklist items)"
+        }
+      ],
+      "references": {
+        "index": "prd_rule__guide_prompts/SECURITY-GUIDE-INDEX.md",
+        "changelog": "prd_rule__guide_prompts/CHANGELOG.md",
+        "total_security_items": 210
+      }
+    }
+  ],
+  "statistics": {
+    "total_skill_lines": 3500,
+    "total_guide_lines": 5800,
+    "security_checklist_items": 210,
+    "example_cases": 2,
+    "supported_platforms": 5,
+    "last_updated": "2026-02-27"
+  }
+}

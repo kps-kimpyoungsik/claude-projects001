@@ -1,0 +1,123 @@
+# Claude Skills Synchronization Configuration
+#
+# 동기화 모드 설정 파일
+# Last Updated: 2026-02-27
+# Version: 1.0.0
+
+###############################################################################
+# SYNCHRONIZATION_MODE (동기화 모드)
+###############################################################################
+#
+# 옵션:
+#   auto      - 자동 동기화 (git hooks 자동 실행)
+#   manual    - 수동 동기화 (사용자가 명시적으로 명령어 실행)
+#
+# 기본값: auto
+#
+
+SYNCHRONIZATION_MODE=auto
+
+###############################################################################
+# AUTO_MODE_SETTINGS (자동 모드 설정)
+###############################################################################
+#
+# 자동 모드일 때만 적용됩니다.
+#
+
+# pre-commit 훅 활성화 (default: true)
+AUTO_ENABLE_PRE_COMMIT=true
+
+# post-merge 훅 활성화 (default: true)
+AUTO_ENABLE_POST_MERGE=true
+
+# 자동 동기화 후 로그 파일에 기록 (default: false)
+AUTO_LOG_ENABLED=false
+AUTO_LOG_FILE=/tmp/claude-skills-sync.log
+
+###############################################################################
+# MANUAL_MODE_SETTINGS (수동 모드 설정)
+###############################################################################
+#
+# 수동 모드일 때만 적용됩니다.
+#
+
+# 수동 동기화 명령어 (default: claude-skills-sync)
+MANUAL_COMMAND_NAME=claude-skills-sync
+
+# 명령어 위치 (default: myskills/scripts/sync-cli.sh)
+MANUAL_COMMAND_PATH=myskills/scripts/sync-cli.sh
+
+# 수동 동기화 후 확인 메시지 표시 (default: true)
+MANUAL_SHOW_CONFIRMATION=true
+
+# 수동 동기화 시 자동 커밋 (default: false)
+# false: 변경사항만 생성, 사용자가 수동으로 커밋
+# true: 자동으로 커밋 수행
+MANUAL_AUTO_COMMIT=false
+
+###############################################################################
+# SYNC_BEHAVIOR (동기화 동작)
+###############################################################################
+#
+
+# 동기화할 대상 (모두 활성화 권장)
+SYNC_SKILLS_INDEX=true
+SYNC_CLAUDE_MD=true
+
+# 동기화 전 백업 생성 (default: false)
+CREATE_BACKUP_BEFORE_SYNC=false
+BACKUP_LOCATION=/tmp/claude-skills-backup
+
+# 실패 시 롤백 (default: false)
+ROLLBACK_ON_FAILURE=false
+
+###############################################################################
+# NOTIFICATION_SETTINGS (알림 설정)
+###############################################################################
+#
+
+# 동기화 완료 후 알림 표시 (default: true)
+SHOW_SYNC_NOTIFICATION=true
+
+# 변경사항 요약 표시 (default: true)
+SHOW_SUMMARY=true
+
+# 상세 로그 출력 (default: false)
+VERBOSE_OUTPUT=false
+
+###############################################################################
+# ADVANCED_SETTINGS (고급 설정)
+###############################################################################
+#
+
+# 동기화 시 스킬 검증 수행 (default: true)
+VALIDATE_SKILLS=true
+
+# 동기화 시 JSON 포맷 검증 (default: true)
+VALIDATE_JSON=true
+
+# 동기화 시 YAML 포맷 검증 (default: true)
+VALIDATE_YAML=true
+
+# 느린 네트워크에서 타임아웃 (초, default: 30)
+SYNC_TIMEOUT=30
+
+###############################################################################
+# 사용 방법
+###############################################################################
+#
+# 1. 모드 변경하기:
+#    # 자동 모드로 전환
+#    SYNCHRONIZATION_MODE=auto
+#
+#    # 수동 모드로 전환
+#    SYNCHRONIZATION_MODE=manual
+#
+# 2. 변경 후:
+#    git add .claude-skills-config
+#    git commit -m "Change sync mode to manual"
+#
+# 3. 동기화 확인:
+#    ./myskills/scripts/sync-cli.sh status
+#
+###############################################################################
