@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🎙️ Voice Pipeline Monitor</title>
+<style>
+:root {
+  --bg0:#f5f5f5; --bg1:#ffffff; --bg2:#e8e8e8; --bg3:#d4d4d4;
+  --border:#a8a8a8; --text0:#0d0d0d; --text1:#1a1a1a; --text2:#404040; --text3:#666666;
+  --c-mic:#059669; --c-vad:#6d28d9; --c-buf:#0284c7; --c-file:#d97706;
+  --c-stt:#6d28d9; --c-txt:#4f46e5;
+  --glow-mic: 0 0 16px #05966999; --glow-vad: 0 0 16px #6d28d999;
+  --glow-buf: 0 0 16px #0284c799; --glow-file:0 0 16px #d9770699;
+  --glow-stt: 0 0 16px #6d28d999; --glow-txt: 0 0 16px #4f46e599;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg0);color:var(--text0);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;font-weight:500}
+body{padding:10px;display:flex;flex-direction:column;gap:10px;min-height:100vh}
+
+/* ── 헤더 ──────────────────────────────────────────────── */
+#hdr{display:flex;align-items:center;gap:10px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;padding:8px 12px;flex-wrap:wrap}
+#hdr h1{font-size:22px;font-weight:700;white-space:nowrap}
+#topic-in{flex:1;min-width:120px;background:var(--bg2);border:1px solid var(--border);border-radius:5px;padding:8px 12px;color:var(--text0);font-size:14px;outline:none;font-weight:500}
+#topic-in:focus{border-color:var(--c-mic)}
+.btn{padding:8px 16px;border-radius:5px;border:none;cursor:pointer;font-size:16px;font-weight:700}
+.btn:disabled{opacity:.3;cursor:default}
+#btn-start{background:var(--c-mic);color:#000}
+#btn-stop{background:#ef4444;color:#fff}
+.opt-group{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.opt-btn{padding:3px 9px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:10px;cursor:pointer;transition:all .2s}
+.opt-btn.on{background:rgba(99,102,241,.2);color:#818cf8;border-color:#4f46e5}
+
+/* ── STT 프로파일 선택 ──────────────────────────────────────── */
+#profile-select{background:var(--bg2);border:1px solid var(--border);border-radius:5px;padding:6px 10px;color:var(--text0);font-size:12px;outline:none;font-weight:500;cursor:pointer}
+#profile-select:focus{border-color:var(--c-stt)}
+.profile-info{display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--text2)}
+.profile-info span:first-child{font-weight:600;color:var(--text1)}
+
+#rec-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(239,68,68,.15);color:#f87171;display:none}
+#rec-badge.on{display:inline;animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── 파이프라인 흐름 ─────────────────────────────────────── */
+#pipeline{background:var(--bg1);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:0;overflow-x:auto}
+.stage{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:70px;flex-shrink:0;position:relative}
+.stage-icon{width:40px;height:40px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;transition:border-color .3s,box-shadow .3s;background:var(--bg2)}
+.stage-label{font-size:10px;color:var(--text2);text-align:center;white-space:nowrap}
+.stage-count{font-size:11px;font-weight:700;color:var(--text2);min-height:14px}
+.stage-status{width:5px;height:5px;border-radius:50%;background:var(--text3);transition:background .3s}
+
+/* 단계별 활성 색상 */
+.stage.s-mic  .stage-icon{border-color:var(--c-mic)}
+.stage.s-vad  .stage-icon{border-color:var(--c-vad)}
+.stage.s-buf  .stage-icon{border-color:var(--c-buf)}
+.stage.s-file .stage-icon{border-color:var(--c-file)}
+.stage.s-stt  .stage-icon{border-color:var(--c-stt)}
+.stage.s-txt  .stage-icon{border-color:var(--c-txt)}
+
+/* glow 옵션 활성 시 */
+body.opt-glow .stage.s-mic  .stage-icon{box-shadow:var(--glow-mic)}
+body.opt-glow .stage.s-vad  .stage-icon{box-shadow:var(--glow-vad)}
+body.opt-glow .stage.s-buf  .stage-icon{box-shadow:var(--glow-buf)}
+body.opt-glow .stage.s-file .stage-icon{box-shadow:var(--glow-file)}
+body.opt-glow .stage.s-stt  .stage-icon{box-shadow:var(--glow-stt)}
+body.opt-glow .stage.s-txt  .stage-icon{box-shadow:var(--glow-txt)}
+
+/* 플래시 애니메이션 */
+.stage.flash .stage-icon{animation:flash .4s ease-out}
+@keyframes flash{0%{transform:scale(1.3)}100%{transform:scale(1)}}
+
+/* 파이프라인 화살표 */
+.arrow{flex:1;min-width:20px;max-width:60px;height:2px;position:relative;overflow:hidden}
+.arrow::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent,transparent 4px,var(--border) 4px,var(--border) 8px)}
+.arrow::after{content:'';position:absolute;top:-2px;left:-100%;width:40%;height:6px;background:linear-gradient(90deg,transparent,rgba(99,102,241,.8),transparent);animation:none}
+body.opt-flow .arrow::after{animation:flow 1.8s linear infinite}
+@keyframes flow{0%{left:-40%}100%{left:100%}}
+.arrow.active::after{animation:flow-fast .6s ease-out!important}
+@keyframes flow-fast{0%{left:-40%;opacity:1}100%{left:100%;opacity:0}}
+
+/* ── 3열 그리드 ───────────────────────────────────────────── */
+#grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;flex:1;min-height:400px}
+@media(max-width:700px){#grid{grid-template-columns:1fr}}
+
+.panel{background:var(--bg1);border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.panel-hd{padding:7px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:space-between}
+.panel-body{padding:8px 10px;display:flex;flex-direction:column;gap:6px;flex:1;overflow:hidden}
+
+/* ── 패널1: 입력 ──────────────────────────────────────────── */
+#canvas-wrap{height:50px;border-radius:5px;overflow:hidden;background:var(--bg2);position:relative}
+#wv-canvas{width:100%;height:100%;display:block}
+#canvas-wrap .canvas-off{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text3)}
+
+/* RMS 히스토리 */
+#rms-hist{height:32px;display:flex;align-items:flex-end;gap:1px;overflow:hidden}
+.rms-bar{flex-shrink:0;width:3px;background:var(--c-mic);border-radius:1px;transition:height .08s;opacity:.8}
+
+/* VAD 상태 */
+.vad-row{display:flex;align-items:center;gap:6px}
+.vad-dot{width:9px;height:9px;border-radius:50%;background:var(--text3);transition:background .2s}
+.vad-dot.speaking{background:var(--c-mic)}
+body.opt-glow .vad-dot.speaking{box-shadow:var(--glow-mic);animation:pulse-vad .8s ease-in-out infinite}
+@keyframes pulse-vad{0%,100%{opacity:1}50%{opacity:.5}}
+.vad-label{font-size:12px;color:var(--text1)}
+.rms-val{font-size:11px;color:var(--text2);margin-left:auto;font-family:monospace}
+
+.stat-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text2);padding:2px 0;border-top:1px solid var(--border)}
+.stat-val{font-weight:700;color:var(--text1);font-family:monospace}
+
+/* ── 패널2: 저장 파이프라인 ──────────────────────────────── */
+.seg-info{background:var(--bg2);border-radius:5px;padding:6px 9px;display:flex;flex-direction:column;gap:3px}
+.seg-name{font-size:11px;color:var(--c-file);font-family:monospace;font-weight:600}
+.seg-bar-wrap{height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.seg-bar{height:100%;background:linear-gradient(90deg,var(--c-file),var(--c-stt));border-radius:3px;transition:width .3s;width:0%}
+.seg-meta{font-size:10px;color:var(--text2);display:flex;justify-content:space-between}
+
+.file-list{display:flex;flex-direction:column;gap:3px;overflow-y:auto;max-height:180px;flex:1}
+.file-card{display:flex;align-items:center;gap:5px;padding:4px 7px;background:var(--bg2);border-radius:4px;font-size:11px;animation:slide-in .25s ease-out;border-left:2px solid var(--border)}
+@keyframes slide-in{from{transform:translateX(-10px);opacity:0}to{transform:translateX(0);opacity:1}}
+.file-card.done{border-color:var(--c-mic)}
+.file-card.processing{border-color:var(--c-stt);animation:slide-in .25s ease-out,pulse-border 1s infinite}
+@keyframes pulse-border{0%,100%{border-color:var(--c-stt)}50%{border-color:rgba(168,85,247,.3)}}
+.file-card.queued{border-color:var(--text3)}
+.fc-icon{font-size:13px}
+.fc-name{flex:1;font-family:monospace;color:var(--text1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+.fc-status{font-size:10px;padding:2px 6px;border-radius:8px;white-space:nowrap}
+.fc-status.done{background:rgba(34,197,94,.15);color:var(--c-mic)}
+.fc-status.processing{background:rgba(168,85,247,.15);color:#c084fc}
+.fc-status.queued{background:rgba(100,116,139,.15);color:var(--text2)}
+
+/* ── 패널3: 텍스트 출력 ──────────────────────────────────── */
+#transcript-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:3px;max-height:180px}
+.tr-entry{padding:5px 7px;border-radius:4px;animation:fade-in .3s ease-out;background:var(--bg2)}
+@keyframes fade-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.tr-spk{font-size:11px;font-weight:700;margin-bottom:2px}
+.tr-txt{font-size:12px;color:var(--text1);line-height:1.4}
+.tr-time{font-size:10px;color:var(--text3);margin-top:1px}
+.tr-empty{font-size:11px;color:var(--text3);text-align:center;padding:15px 0}
+
+/* 화자 색상 */
+.spk-0{color:#7c3aed} .spk-1{color:#0ea5e9} .spk-2{color:#10b981}
+.spk-3{color:#f59e0b} .spk-4{color:#dc2626} .spk-5{color:#6366f1}
+.tr-entry.spk-0{border-left:2px solid #7c3aed}
+.tr-entry.spk-1{border-left:2px solid #0ea5e9}
+.tr-entry.spk-2{border-left:2px solid #10b981}
+.tr-entry.spk-3{border-left:2px solid #f59e0b}
+.tr-entry.spk-4{border-left:2px solid #dc2626}
+.tr-entry.spk-5{border-left:2px solid #6366f1}
+
+/* 통계 바 */
+.stats-row{display:flex;gap:8px;flex-wrap:wrap}
+.stat-badge{background:var(--bg2);border-radius:5px;padding:5px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;flex:1}
+.stat-badge .n{font-size:16px;font-weight:700;color:var(--text0);font-variant-numeric:tabular-nums}
+.stat-badge .l{font-size:10px;color:var(--text2)}
+
+/* ── 보고서 패널 ──────────────────────────────────────────── */
+#report-panel{margin-top:10px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+#report-panel.hidden{display:none}
+.rp-hd{padding:7px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px}
+.rp-body{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.rp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rp-label{font-size:11px;color:var(--text2);min-width:50px}
+.rp-select{background:var(--bg3);border:1px solid var(--border);color:var(--text1);border-radius:4px;padding:5px 8px;font-size:11px}
+.rp-btn{padding:6px 12px;border-radius:5px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:opacity .2s}
+.rp-btn:disabled{opacity:.4;cursor:not-allowed}
+.rp-btn.primary{background:#6366f1;color:#fff}
+.rp-btn.primary:hover:not(:disabled){background:#4f46e5}
+.rp-btn.success{background:#22c55e;color:#fff}
+.rp-btn.success:hover:not(:disabled){background:#16a34a}
+.rp-btn.outline{background:transparent;color:var(--text1);border:1px solid var(--border)}
+.rp-btn.outline:hover:not(:disabled){background:var(--bg2)}
+
+/* 진행 단계 */
+.rp-steps{display:flex;gap:5px;align-items:center}
+.rp-step{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text3)}
+.rp-step.active{color:#a78bfa}
+.rp-step.done{color:#22c55e}
+.rp-step.error{color:#f87171}
+.rp-step-dot{width:6px;height:6px;border-radius:50%;background:var(--text3)}
+.rp-step.active .rp-step-dot{background:#a78bfa;animation:pulse-vad .8s infinite}
+.rp-step.done   .rp-step-dot{background:#22c55e}
+.rp-step.error  .rp-step-dot{background:#f87171}
+.rp-arrow{font-size:10px;color:var(--text3)}
+
+.rp-msg{font-size:11px;color:var(--text2);font-family:monospace;padding:5px 7px;background:var(--bg2);border-radius:4px;min-height:20px}
+.rp-msg.error{color:#f87171}
+
+/* 보고서 뷰어 모달 */
+#report-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center}
+#report-modal.hidden{display:none}
+.rm-box{background:var(--bg1);border:1px solid var(--border);border-radius:10px;width:min(800px,95vw);max-height:85vh;display:flex;flex-direction:column;overflow:hidden}
+.rm-hd{padding:8px 10px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.rm-hd h3{flex:1;margin:0;font-size:14px}
+.rm-body{padding:12px 15px;overflow-y:auto;flex:1;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;color:var(--text1);font-family:monospace}
+</style>
+</head>
+<body>
+
+<!-- ① 헤더 -->
+<div id="hdr">
+  <h1>🎙️ Voice Pipeline Monitor</h1>
+  <input id="topic-in" type="text" placeholder="녹음 주제 입력..." maxlength="40">
+  <button class="btn" id="btn-start">▶ 시작</button>
+  <button class="btn" id="btn-stop" disabled>⏹ 중지</button>
+  <button class="btn" id="btn-delete" title="현재 주제의 모든 녹음/텍스트 삭제" style="background:#a33">🗑 주제 삭제</button>
+  <button class="btn" id="btn-delete-all" title="전체 주제의 모든 녹음/텍스트 완전 삭제 (되돌릴 수 없음)" style="background:#933">🗑🗑 전체 삭제</button>
+  <span id="rec-badge">● REC</span>
+
+  <!-- STT 프로파일 선택 -->
+  <select id="profile-select" title="STT 최적화 프로파일 선택">
+    <option value="baseline">정확도우선(47초)</option>
+    <option value="fast-int8">int8양자화(20~25초)</option>
+    <option value="fast-medium" selected>회의용표준(8~12초)</option>
+    <option value="ultra-fast">속도우선(5~8초)</option>
+    <option value="gpu-optimized">GPU가속(2~4초)</option>
+  </select>
+  <div class="profile-info" id="profile-info">
+    <span>회의용 표준</span>
+    <span>정확도: 높음 | 시간: 8~12초</span>
+  </div>
+
+  <div class="opt-group">
+    <button class="opt-btn on" id="opt-wave"  title="파형 캔버스 (고부하)">파형</button>
+    <button class="opt-btn on" id="opt-glow"  title="글로우 효과">글로우</button>
+    <button class="opt-btn on" id="opt-flow"  title="파이프라인 흐름 애니메이션">흐름</button>
+    <button class="opt-btn on" id="opt-scroll" title="자동 스크롤">스크롤</button>
+  </div>
+</div>
+
+<!-- ② 파이프라인 흐름 -->
+<div id="pipeline">
+  <div class="stage" id="st-mic">
+    <div class="stage-icon">🎤</div>
+    <div class="stage-status" id="ss-mic"></div>
+    <div class="stage-label">마이크</div>
+    <div class="stage-count" id="sc-mic">—</div>
+  </div>
+  <div class="arrow" id="ar-1"></div>
+  <div class="stage" id="st-vad">
+    <div class="stage-icon">👁</div>
+    <div class="stage-status" id="ss-vad"></div>
+    <div class="stage-label">VAD 감지</div>
+    <div class="stage-count" id="sc-vad">0회</div>
+  </div>
+  <div class="arrow" id="ar-2"></div>
+  <div class="stage" id="st-buf">
+    <div class="stage-icon">📦</div>
+    <div class="stage-status" id="ss-buf"></div>
+    <div class="stage-label">버퍼 확정</div>
+    <div class="stage-count" id="sc-buf">0개</div>
+  </div>
+  <div class="arrow" id="ar-3"></div>
+  <div class="stage" id="st-file">
+    <div class="stage-icon">💾</div>
+    <div class="stage-status" id="ss-file"></div>
+    <div class="stage-label">파일 저장</div>
+    <div class="stage-count" id="sc-file">0개</div>
+  </div>
+  <div class="arrow" id="ar-4"></div>
+  <div class="stage" id="st-stt">
+    <div class="stage-icon">⚙️</div>
+    <div class="stage-status" id="ss-stt"></div>
+    <div class="stage-label">STT 처리</div>
+    <div class="stage-count" id="sc-stt">0개</div>
+  </div>
+  <div class="arrow" id="ar-5"></div>
+  <div class="stage" id="st-txt">
+    <div class="stage-icon">📝</div>
+    <div class="stage-status" id="ss-txt"></div>
+    <div class="stage-label">텍스트 출력</div>
+    <div class="stage-count" id="sc-txt">0줄</div>
+  </div>
+</div>
+
+<!-- ③ 3열 그리드 -->
+<div id="grid">
+
+  <!-- 패널1: 실시간 입력 -->
+  <div class="panel">
+    <div class="panel-hd">
+      🎤 실시간 입력
+      <span id="p1-status" style="font-size:10px;color:var(--text2)">대기 중</span>
+    </div>
+    <div class="panel-body">
+      <div id="canvas-wrap">
+        <canvas id="wv-canvas"></canvas>
+        <div class="canvas-off" id="canvas-off">파형 옵션 비활성</div>
+      </div>
+      <div id="rms-hist"></div>
+      <div class="vad-row">
+        <div class="vad-dot" id="vad-dot"></div>
+        <span class="vad-label" id="vad-label">무음 대기 중</span>
+        <span class="rms-val" id="rms-val">RMS —</span>
+      </div>
+      <div class="stat-row">
+        <span>세그먼트 크기</span>
+        <span class="stat-val" id="seg-size-val">0 KB</span>
+      </div>
+      <div class="stat-row">
+        <span>Pre-Buffer</span>
+        <span class="stat-val" id="prebuf-val">대기 중</span>
+      </div>
+      <div class="stat-row">
+        <span>녹음 경과</span>
+        <span class="stat-val" id="dur-val">00:00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 패널2: 저장 파이프라인 -->
+  <div class="panel">
+    <div class="panel-hd">
+      💾 저장 파이프라인
+      <span id="p2-status" style="font-size:10px;color:var(--text2)">대기 중</span>
+    </div>
+    <div class="panel-body">
+      <div class="seg-info">
+        <div class="seg-name" id="cur-seg-name">파일 없음</div>
+        <div class="seg-bar-wrap"><div class="seg-bar" id="cur-seg-bar"></div></div>
+        <div class="seg-meta">
+          <span id="cur-seg-size">0 KB</span>
+          <span id="cur-seg-max">/ 5 MB</span>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text2);font-weight:600">저장된 파일</div>
+      <div class="file-list" id="file-list">
+        <div style="font-size:10px;color:var(--text3);text-align:center;padding:10px 0">파일 없음</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-badge"><div class="n" id="n-saved">0</div><div class="l">저장됨</div></div>
+        <div class="stat-badge"><div class="n" id="n-processing">0</div><div class="l">처리중</div></div>
+        <div class="stat-badge"><div class="n" id="n-done">0</div><div class="l">완료</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 패널3: 텍스트 출력 -->
+  <div class="panel">
+    <div class="panel-hd">
+      📝 텍스트 출력
+      <span id="p3-status" style="font-size:10px;color:var(--text2)">대기 중</span>
+    </div>
+    <div class="panel-body">
+      <div id="transcript-body">
+        <div class="tr-empty">STT 결과가 여기에 표시됩니다</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-badge"><div class="n" id="n-segs">0</div><div class="l">세그먼트</div></div>
+        <div class="stat-badge"><div class="n" id="n-words">0</div><div class="l">단어</div></div>
+        <div class="stat-badge"><div class="n" id="n-spk">0</div><div class="l">화자</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ④ 보고서 패널 (녹음 종료 후 표시) -->
+<div id="report-panel" class="hidden">
+  <div class="rp-hd">📄 보고서 생성
+    <span id="rp-topic-badge" style="font-size:10px;color:var(--text2);margin-left:4px"></span>
+  </div>
+  <div class="rp-body">
+    <div class="rp-row">
+      <span class="rp-label">주제</span>
+      <input id="rp-topic-in" type="text" class="rp-select" style="width:160px" placeholder="회의 주제">
+      <span class="rp-label">형식</span>
+      <select id="rp-doctype" class="rp-select">
+        <option value="docx">Word (.docx)</option>
+        <option value="pdf">PDF (.pdf)</option>
+        <option value="xlsx">Excel (.xlsx)</option>
+        <option value="pptx">PowerPoint (.pptx)</option>
+      </select>
+      <button class="rp-btn primary" id="rp-btn-start">🚀 요약 생성</button>
+    </div>
+    <div class="rp-steps" id="rp-steps" style="display:none">
+      <div class="rp-step" id="rps-sum"><div class="rp-step-dot"></div>LLM 요약</div>
+      <div class="rp-arrow">→</div>
+      <div class="rp-step" id="rps-doc"><div class="rp-step-dot"></div>문서 생성</div>
+      <div class="rp-arrow">→</div>
+      <div class="rp-step" id="rps-done"><div class="rp-step-dot"></div>완료</div>
+    </div>
+    <div id="rp-msg" class="rp-msg" style="display:none"></div>
+    <div class="rp-row" id="rp-result-row" style="display:none">
+      <button class="rp-btn success" id="rp-btn-view">📖 보고서 보기</button>
+      <button class="rp-btn outline" id="rp-btn-dl">⬇ 다운로드</button>
+    </div>
+  </div>
+</div>
+
+<!-- 보고서 뷰어 모달 -->
+<div id="report-modal" class="hidden">
+  <div class="rm-box">
+    <div class="rm-hd">
+      <h3>📄 요약 보고서</h3>
+      <button class="rp-btn outline" id="rm-btn-dl" style="font-size:10px">⬇ 다운로드</button>
+      <button class="rp-btn outline" onclick="document.getElementById('report-modal').classList.add('hidden')" style="font-size:10px">✕ 닫기</button>
+    </div>
+    <div class="rm-body" id="rm-content">내용 로딩 중...</div>
+  </div>
+</div>
+
+<script src="src/voice-stt.js"></script>
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════
+//  성능 옵션 관리
+// ══════════════════════════════════════════════════════════
+const OPTS = { wave: true, glow: true, flow: true, scroll: true };
+
+function _initOpts() {
+  const sync = () => {
+    document.body.classList.toggle('opt-glow', OPTS.glow);
+    document.body.classList.toggle('opt-flow', OPTS.flow);
+    // 파형 캔버스 표시 여부
+    document.getElementById('wv-canvas').style.display = OPTS.wave ? 'block' : 'none';
+    document.getElementById('canvas-off').style.display = OPTS.wave ? 'none' : 'flex';
+  };
+  ['wave','glow','flow','scroll'].forEach(k => {
+    const btn = document.getElementById('opt-' + k);
+    btn.addEventListener('click', () => {
+      OPTS[k] = !OPTS[k];
+      btn.classList.toggle('on', OPTS[k]);
+      sync();
+    });
+  });
+  sync();
+}
+
+// ══════════════════════════════════════════════════════════
+//  내부 상태
+// ══════════════════════════════════════════════════════════
+let topic       = '';
+let running     = false;
+let durTimer    = null;
+let startTs     = 0;
+let wsLive      = null;
+let prevSpeaking = false;  // VAD 전환 감지용
+
+// 통계
+const stat = { vad:0, bufs:0, files:0, sttDone:0, lines:0, words:0 };
+const speakers = new Map(); // speaker name → colorIdx
+let   spkIdx   = 0;
+
+// 파일 카드 추적: filename → {el, status}
+const fileCards = new Map();
+
+// RMS 히스토리 (최근 80개)
+const rmsHist = new Array(80).fill(0);
+
+// ══════════════════════════════════════════════════════════
+//  DOM 헬퍼
+// ══════════════════════════════════════════════════════════
+const $  = id => document.getElementById(id);
+const now = () => new Date().toLocaleTimeString('ko-KR', {hour12:false});
+
+// ══════════════════════════════════════════════════════════
+//  파이프라인 단계 활성화
+// ══════════════════════════════════════════════════════════
+const STAGE_COLORS = {
+  mic:'s-mic', vad:'s-vad', buf:'s-buf', file:'s-file', stt:'s-stt', txt:'s-txt'
+};
+
+function activateStage(id) {
+  const el = $('st-' + id);
+  if (!el) return;
+  el.classList.remove('flash');
+  void el.offsetWidth; // reflow (애니메이션 재시작)
+  el.classList.add('flash', STAGE_COLORS[id]);
+
+  // 앞 화살표 플래시
+  const arMap = { vad:'ar-1', buf:'ar-2', file:'ar-3', stt:'ar-4', txt:'ar-5' };
+  const ar = arMap[id];
+  if (ar && $( ar)) {
+    $( ar).classList.remove('active');
+    void $(ar).offsetWidth;
+    $(ar).classList.add('active');
+    setTimeout(() => $(ar).classList.remove('active'), 600);
+  }
+}
+
+function setStageStatus(id, active) {
+  const el = $('ss-' + id);
+  if (el) el.style.background = active
+    ? `var(--c-${id})`
+    : 'var(--text3)';
+}
+
+// ══════════════════════════════════════════════════════════
+//  파형 캔버스 (requestAnimationFrame)
+// ══════════════════════════════════════════════════════════
+let animId = null;
+
+function startWaveform() {
+  if (!OPTS.wave) return;
+  const canvas  = $('wv-canvas');
+  const wrap    = $('canvas-wrap');
+  const ctx     = canvas.getContext('2d');
+
+  function draw() {
+    if (!running || !OPTS.wave) return;
+    animId = requestAnimationFrame(draw);
+
+    const W = wrap.offsetWidth;
+    const H = wrap.offsetHeight;
+    canvas.width  = W;
+    canvas.height = H;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#141c2e';
+    ctx.fillRect(0, 0, W, H);
+
+    const analyser = VoiceSTT.getAnalyser();
+    if (!analyser) {
+      // analyser 없으면 RMS 히스토리로 대체
+      _drawRmsAsWave(ctx, W, H);
+      return;
+    }
+    const buf = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(buf);
+
+    ctx.beginPath();
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth   = 1.5;
+    const sliceW = W / buf.length;
+    let x = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = buf[i] / 128.0;
+      const y = (v * H) / 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      x += sliceW;
+    }
+    ctx.stroke();
+  }
+  cancelAnimationFrame(animId);
+  draw();
+}
+
+function _drawRmsAsWave(ctx, W, H) {
+  // RMS 히스토리를 파형처럼 그리기
+  ctx.beginPath();
+  ctx.strokeStyle = '#22c55e88';
+  ctx.lineWidth = 1;
+  const step = W / rmsHist.length;
+  for (let i = 0; i < rmsHist.length; i++) {
+    const v   = Math.min(rmsHist[i] * 8, 1.0);
+    const mid = H / 2;
+    const amp = v * (H / 2 - 4);
+    const x   = i * step;
+    if (i === 0) ctx.moveTo(x, mid);
+    else {
+      ctx.lineTo(x, mid - amp);
+      ctx.lineTo(x, mid + amp);
+    }
+  }
+  ctx.stroke();
+}
+
+function stopWaveform() {
+  cancelAnimationFrame(animId);
+  animId = null;
+}
+
+// 탭 숨김 시 캔버스 중단 (성능)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopWaveform();
+  else if (running) startWaveform();
+});
+
+// ══════════════════════════════════════════════════════════
+//  RMS 히스토리 바 차트 (#rms-hist)
+// ══════════════════════════════════════════════════════════
+let histBars = null;
+
+function _initRmsBars() {
+  const wrap = $('rms-hist');
+  wrap.innerHTML = '';
+  histBars = [];
+  for (let i = 0; i < 80; i++) {
+    const b = document.createElement('div');
+    b.className = 'rms-bar';
+    b.style.height = '2px';
+    wrap.appendChild(b);
+    histBars.push(b);
+  }
+}
+
+function updateRmsBar(rms) {
+  rmsHist.shift();
+  rmsHist.push(rms);
+  if (!histBars) return;
+  const max = Math.max(...rmsHist, 0.01);
+  for (let i = 0; i < 80; i++) {
+    const pct = Math.min(rmsHist[i] / max, 1);
+    histBars[i].style.height = Math.max(2, pct * 34) + 'px';
+    // 색상: 낮음=green, 중간=yellow, 높음=red
+    histBars[i].style.opacity = 0.4 + pct * 0.6;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  파일 카드
+// ══════════════════════════════════════════════════════════
+const MAX_FILE_CARDS = 20;
+
+function addFileCard(filename, status = 'queued') {
+  const list = $('file-list');
+  // 첫 카드 — "없음" 제거
+  if (list.children.length === 1 && list.children[0].style.cssText) {
+    list.innerHTML = '';
+  }
+  // 최대 개수 유지
+  while (list.children.length >= MAX_FILE_CARDS) {
+    list.removeChild(list.firstChild);
+  }
+  const el = document.createElement('div');
+  const statusLabel = {queued:'대기', processing:'처리중', done:'완료'}[status] || status;
+  const statusCls   = status;
+  el.className      = `file-card ${status}`;
+  el.innerHTML = `
+    <span class="fc-icon">${status==='done'?'✅':status==='processing'?'⚙️':'📄'}</span>
+    <span class="fc-name" title="${filename}">${filename}</span>
+    <span class="fc-status ${statusCls}">${statusLabel}</span>
+  `;
+  list.appendChild(el);
+  fileCards.set(filename, el);
+  if (OPTS.scroll) list.scrollTop = list.scrollHeight;
+}
+
+function updateFileCard(filename, newStatus) {
+  const el = fileCards.get(filename);
+  if (!el) return;
+  el.className = `file-card ${newStatus}`;
+  const ic  = el.querySelector('.fc-icon');
+  const sc  = el.querySelector('.fc-status');
+  if (ic) ic.textContent = newStatus==='done'?'✅':newStatus==='processing'?'⚙️':'📄';
+  if (sc) {
+    sc.className = `fc-status ${newStatus}`;
+    sc.textContent = {queued:'대기', processing:'처리중', done:'완료'}[newStatus] || newStatus;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  트랜스크립트
+// ══════════════════════════════════════════════════════════
+const MAX_TR = 100;
+
+function addTranscript(speaker, text) {
+  if (!speaker) speaker = '화자?';
+  if (!speakers.has(speaker)) {
+    speakers.set(speaker, spkIdx++ % 6);
+    $('n-spk').textContent = speakers.size;
+  }
+  const ci   = speakers.get(speaker);
+  const body = $('transcript-body');
+
+  // 첫 항목 — empty 제거
+  if (body.querySelector('.tr-empty')) body.innerHTML = '';
+
+  // 최대 항목 유지
+  while (body.children.length >= MAX_TR) body.removeChild(body.firstChild);
+
+  const el = document.createElement('div');
+  el.className = `tr-entry spk-${ci}`;
+  el.innerHTML = `
+    <div class="tr-spk spk-${ci}">${speaker}</div>
+    <div class="tr-txt">${text}</div>
+    <div class="tr-time">${now()}</div>
+  `;
+  body.appendChild(el);
+
+  // 단어 수
+  stat.words += text.trim().split(/\s+/).filter(Boolean).length;
+  stat.lines++;
+  $('n-words').textContent = stat.words;
+  $('n-segs').textContent  = stat.lines;
+
+  if (OPTS.scroll) body.scrollTop = body.scrollHeight;
+}
+
+// ══════════════════════════════════════════════════════════
+//  현재 세그먼트 크기 업데이트
+// ══════════════════════════════════════════════════════════
+let curSegBytes = 0;
+let maxSegBytes = 5 * 1024 * 1024;
+
+function updateSegBar(bytes, filename) {
+  curSegBytes = bytes;
+  const kb  = (bytes / 1024).toFixed(1);
+  const pct = Math.min(bytes / maxSegBytes * 100, 100);
+  $('cur-seg-bar').style.width = pct + '%';
+  $('cur-seg-size').textContent = kb + ' KB';
+  if (filename) $('cur-seg-name').textContent = filename;
+  $('seg-size-val').textContent = kb + ' KB';
+}
+
+// ══════════════════════════════════════════════════════════
+//  녹음 타이머
+// ══════════════════════════════════════════════════════════
+function _startTimer() {
+  startTs = Date.now();
+  durTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - startTs) / 1000);
+    const mm = String(Math.floor(s / 60)).padStart(2,'0');
+    const ss = String(s % 60).padStart(2,'0');
+    $('dur-val').textContent = `${mm}:${ss}`;
+  }, 1000);
+}
+
+function _stopTimer() {
+  clearInterval(durTimer);
+  durTimer = null;
+}
+
+// ══════════════════════════════════════════════════════════
+//  /ws/live WebSocket
+// ══════════════════════════════════════════════════════════
+function connectLive() {
+  if (wsLive) return;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  wsLive = new WebSocket(`${proto}://${location.host}/ws/live`);
+
+  wsLive.onmessage = e => {
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+
+    // STT 처리 상태 업데이트
+    if (d.type === 'stt_status') {
+      const step = d.step || '';
+      const progress = d.progress || 0;
+      const timing = d.timing || {};
+
+      // 상태 텍스트 표시 (P2: 저장 파이프라인 + P3: 텍스트 출력)
+      $('p2-status').textContent = step;
+
+      // 타이밍 정보 포맷팅
+      let timingText = `변환 중 (${progress}%)...`;
+      if (d.status === 'completed' && timing.stages) {
+        const t = timing.stages;
+        timingText = [
+          `리샘플링: ${(timing.audio_duration_sec || 0).toFixed(1)}s`,
+          `Whisper: ${(t.whisper_recognition || 0).toFixed(1)}s`,
+          `필터링: ${(t.text_filtering || 0).toFixed(3)}s`,
+          `화자식별: ${(t.speaker_identification || 0).toFixed(2)}s ${timing.segments_count ? `(${timing.segments_count}세그)` : ''}`,
+          `합계: ${(timing.total_elapsed || 0).toFixed(2)}s`
+        ].join(' | ');
+      }
+      $('p3-status').textContent = timingText;
+      console.log(`[STT] ${step} (${progress}%) | ${timingText}`);
+
+      // stt 단계 활성화 (처리 중이면)
+      if (d.status !== 'completed') {
+        activateStage('stt');
+        // 텍스트 출력 패널에 "변환 중..." 메시지 표시
+        const tbody = $('transcript-body');
+        if (tbody) {
+          tbody.innerHTML = `<div class="tr-empty" style="color:var(--c-stt);font-weight:600">${step}<br><span style="font-size:10px">(${progress}%)</span></div>`;
+        }
+      } else {
+        // 완료 후 타이밍 정보 표시
+        const tbody = $('transcript-body');
+        if (tbody && timing.stages) {
+          const t = timing.stages;
+          const timingLog = document.createElement('div');
+          timingLog.className = 'timing-log';
+          const profileInfo = timing.profile ? `${timing.profile.toUpperCase()} | ` : '';
+          const modelInfo = timing.model ? `${timing.model} | ` : '';
+          const computeInfo = timing.compute ? `${timing.compute}` : '';
+          timingLog.innerHTML = `
+            <div style="background:var(--bg2);border-radius:5px;padding:8px;font-family:monospace;font-size:11px;color:var(--text1);margin-bottom:8px;white-space:pre-wrap;word-break:break-all">
+[STT 완료] ${profileInfo}${modelInfo}${computeInfo}
+  음성: ${(timing.audio_duration_sec || 0).toFixed(1)}s
+  리샘플링: ${(t.whisper_recognition || 0).toFixed(3)}s
+  Whisper: ${(t.whisper_recognition || 0).toFixed(1)}s (beam=${timing.beam_size || 5})
+  필터링: ${(t.text_filtering || 0).toFixed(3)}s
+  화자식별: ${(t.speaker_identification || 0).toFixed(2)}s ${timing.segments_count ? `(${timing.segments_count}세그)` : '(비활성화)'}
+  합계: ${(timing.total_elapsed || 0).toFixed(2)}s
+            </div>
+          `;
+          tbody.insertBefore(timingLog, tbody.firstChild);
+        }
+      }
+      return;
+    }
+
+    // 파이프라인 이벤트 전달
+    if (d.type === 'pipeline_progress') { ReportPanel.onWSEvent(d); return; }
+
+    if (d.type !== 'stt_result') return;
+
+    const fn = d.filename || '';
+
+    // 파일 카드 완료 처리
+    if (fn) {
+      if (!fileCards.has(fn)) addFileCard(fn, 'processing');
+      else updateFileCard(fn, 'done');
+    }
+
+    // 파이프라인 단계 활성화
+    activateStage('stt');
+    setTimeout(() => activateStage('txt'), 200);
+
+    // 텍스트 추가: 세그먼트별 화자 정보가 있으면 우선 사용
+    if (d.speaker_segments && d.speaker_segments.length > 0) {
+      d.speaker_segments.forEach(seg => {
+        addTranscript(seg.speaker || '화자1', seg.text);
+      });
+      stat.sttDone++;
+      $('sc-stt').textContent  = stat.sttDone + '개';
+      $('sc-txt').textContent  = stat.lines + '줄';
+      $('n-done').textContent  = stat.sttDone;
+      $('p3-status').textContent = `${stat.sttDone}개 완료`;
+    } else if (d.text) {
+      // 폴백: 세그먼트별 정보 없으면 전체 텍스트
+      addTranscript(d.speaker || '화자1', d.text);
+      stat.sttDone++;
+      $('sc-stt').textContent  = stat.sttDone + '개';
+      $('sc-txt').textContent  = stat.lines + '줄';
+      $('n-done').textContent  = stat.sttDone;
+      $('p3-status').textContent = `${stat.sttDone}개 완료`;
+    }
+    setStageStatus('stt', false);
+    setStageStatus('txt', true);
+  };
+
+  wsLive.onclose = () => { wsLive = null; };
+}
+
+function disconnectLive() {
+  if (wsLive) { wsLive.close(); wsLive = null; }
+}
+
+// ══════════════════════════════════════════════════════════
+//  녹음 시작 / 중지
+// ══════════════════════════════════════════════════════════
+async function startRecording() {
+  topic = $('topic-in').value.trim() || 'viz-test';
+
+  // 서버에 폴더 생성 요청
+  try {
+    await fetch(`/api/recordings/start?topic=${encodeURIComponent(topic)}`, { method: 'POST' });
+  } catch { /* 서버 미실행 시 무시 */ }
+
+  // 서버 설정 로드
+  let cfg = { maxFileMB:5, silenceDuration:800, silenceThreshold:0.012, minSpeechMs:500 };
+  try {
+    const r = await fetch('/api/config');
+    if (r.ok) cfg = { ...cfg, ...(await r.json()) };
+  } catch {}
+
+  maxSegBytes = (cfg.maxFileMB || 5) * 1024 * 1024;
+  $('cur-seg-max').textContent = `/ ${cfg.maxFileMB || 5} MB`;
+
+  // 파일 목록 초기화
+  fileCards.clear();
+  $('file-list').innerHTML = '<div style="font-size:10px;color:var(--text3);text-align:center;padding:10px 0">파일 없음</div>';
+  $('transcript-body').innerHTML = '<div class="tr-empty">STT 결과가 여기에 표시됩니다</div>';
+  Object.assign(stat, { vad:0, bufs:0, files:0, sttDone:0, lines:0, words:0 });
+  speakers.clear(); spkIdx = 0;
+  prevSpeaking = false;
+  ['n-saved','n-processing','n-done','n-segs','n-words','n-spk'].forEach(id => $(id).textContent = '0');
+  curSegBytes = 0;
+  updateSegBar(0, '파일 없음');
+  rmsHist.fill(0);
+
+  VoiceSTT.init({
+    maxSegmentMB    : cfg.maxFileMB || 5,
+    silenceDuration : cfg.silenceDuration,
+    silenceThreshold: cfg.silenceThreshold,
+    minSpeechMs     : cfg.minSpeechMs,
+    onVAD: (speaking, rms) => {
+      const dot   = $('vad-dot');
+      const label = $('vad-label');
+      dot.classList.toggle('speaking', speaking);
+      $('rms-val').textContent = `RMS ${rms.toFixed(4)}`;
+      setStageStatus('mic', true);
+      $('sc-mic').textContent = `RMS ${rms.toFixed(3)}`;
+      updateRmsBar(rms);
+
+      // 버퍼 크기 실시간 표시 (getStats 사용)
+      const st = VoiceSTT.getStats();
+      if (speaking) {
+        $('prebuf-val').textContent = `누적 ${st.activeBufKB} KB (${st.activeBufMs}ms)`;
+        // 활성 버퍼 크기 → 세그먼트 바 실시간 갱신
+        updateSegBar(parseFloat(st.activeBufKB) * 1024, null);
+      } else {
+        $('prebuf-val').textContent = `Pre-Buffer ${st.preBufKB} KB (${st.preBufMs}ms)`;
+      }
+
+      // VAD 전환 시만 카운트 + 단계 활성화 (매 프레임 아님)
+      if (speaking && !prevSpeaking) {
+        activateStage('vad');
+        setStageStatus('vad', true);
+        stat.vad++;
+        $('sc-vad').textContent = stat.vad + '회';
+        label.textContent = '발화 감지 중...';
+        $('p1-status').textContent = '발화 감지 중';
+      } else if (!speaking && prevSpeaking) {
+        setStageStatus('vad', false);
+        label.textContent = running ? '무음 대기 중' : '녹음 중지됨';
+        if (running) $('p1-status').textContent = '무음 대기 중';
+      }
+      prevSpeaking = speaking;
+    },
+    onAudioReady: async (wavBuf, durMs) => {
+      // 청크 확정 → 파일 저장
+      stat.bufs++;
+      $('sc-buf').textContent = stat.bufs + '개';
+      activateStage('buf');
+
+      const filename = `rec_${_ts()}_${String(stat.bufs).padStart(3,'0')}.wav`;
+
+      // 파일 카드 추가
+      addFileCard(filename, 'queued');
+      stat.files++;
+      $('sc-file').textContent = stat.files + '개';
+      $('n-saved').textContent = stat.files;
+      $('p2-status').textContent = `${stat.files}개 저장됨`;
+
+      // 서버 전송
+      try {
+        updateFileCard(filename, 'processing');
+        activateStage('file');
+        $('n-processing').textContent =
+          [...fileCards.values()].filter(e=>e.classList.contains('processing')).length;
+
+        const resp = await fetch(
+          `/api/recordings?topic=${encodeURIComponent(topic)}`,
+          { method:'POST', body: wavBuf,
+            headers:{'Content-Type':'audio/wav','X-Duration-Ms':durMs} }
+        );
+        if (resp.ok) {
+          // 서버 생성 파일명으로 카드 리매핑 (WS 브로드캐스트와 키 일치)
+          const data = await resp.json().catch(() => ({}));
+          const srvFn = data.filename;
+          if (srvFn && srvFn !== filename) {
+            const el = fileCards.get(filename);
+            if (el) {
+              fileCards.delete(filename);
+              fileCards.set(srvFn, el);
+              const nm = el.querySelector('.fc-name');
+              if (nm) { nm.textContent = srvFn; nm.title = srvFn; }
+            }
+            updateSegBar(wavBuf.byteLength, srvFn);
+          } else {
+            updateSegBar(wavBuf.byteLength, filename);
+          }
+        } else {
+          updateFileCard(filename, 'queued');
+          updateSegBar(wavBuf.byteLength, filename);
+        }
+      } catch (err) {
+        updateFileCard(filename, 'queued');
+      }
+    },
+    onStatus: s => {
+      $('p1-status').textContent = s;
+    },
+    onError: msg => {
+      // 녹음 중지 시 발생하는 정상 종료 메시지는 오류로 표시 안 함
+      if (!running) return;
+      $('p1-status').textContent = `오류: ${msg}`;
+    },
+  });
+
+  await VoiceSTT.start();
+  running = true;
+  $('btn-start').disabled = true;
+  $('btn-stop').disabled  = false;
+  $('topic-in').disabled  = true;
+  $('rec-badge').classList.add('on');
+  setStageStatus('mic', true);
+  activateStage('mic');
+  _startTimer();
+  startWaveform();
+  connectLive();
+}
+
+async function stopRecording() {
+  VoiceSTT.stop();
+  running = false;
+  $('btn-start').disabled = false;
+  $('btn-stop').disabled  = true;
+  $('topic-in').disabled  = false;
+  $('rec-badge').classList.remove('on');
+  ['mic','vad','buf','file','stt','txt'].forEach(id => setStageStatus(id, false));
+  $('p1-status').textContent = '중지됨';
+  $('vad-dot').classList.remove('speaking');
+  $('vad-label').textContent = '녹음 중지됨';
+  _stopTimer();
+  stopWaveform();
+
+  // 서버에 종료 알림 → pending 버퍼 플러시 (미완성 문장 기록)
+  try {
+    await fetch(`/api/recordings/stop?topic=${encodeURIComponent(topic)}`, { method: 'POST' });
+  } catch { /* 서버 미실행 시 무시 */ }
+
+  // 보고서 패널 표시 + 자동 요약 진행 중 메시지
+  ReportPanel.show(topic);
+
+  // 자동 요약 시작 알림 표시
+  const rpMsg = $('rp-msg');
+  if (rpMsg) {
+    rpMsg.style.display = 'block';
+    rpMsg.textContent = '🔄 서버에서 자동 요약 중...';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  데이터 삭제 (현재 주제 전체)
+// ══════════════════════════════════════════════════════════
+async function deleteCurrentTopic() {
+  const t = ($('topic-in').value || topic || '').trim();
+  if (!t) { alert('삭제할 주제를 입력해주세요'); return; }
+  if (!confirm(`주제 "${t}" 의 모든 녹음·텍스트·보고서를 삭제합니다.\n되돌릴 수 없습니다. 계속할까요?`)) return;
+  try {
+    const r = await fetch(`/api/storage/delete?topic=${encodeURIComponent(t)}`, { method: 'DELETE' });
+    const j = await r.json();
+    if (j.ok) {
+      alert(`삭제 완료: ${j.deleted || t}`);
+      // UI 초기화
+      const liveEl = $('live-text'); if (liveEl) liveEl.textContent = '';
+      const finalEl = $('final-text'); if (finalEl) finalEl.textContent = '';
+    } else {
+      alert('삭제 실패: ' + (j.error || '알 수 없는 오류'));
+    }
+  } catch (e) {
+    alert('요청 실패: ' + e.message);
+  }
+}
+document.getElementById('btn-delete').addEventListener('click', deleteCurrentTopic);
+
+// ══════════════════════════════════════════════════════════
+//  전체 데이터 삭제 (모든 주제 포함)
+// ══════════════════════════════════════════════════════════
+async function deleteAllTopics() {
+  if (!confirm('⚠️ 경고: 전체 recordings 폴더의 모든 녹음·텍스트를 삭제합니다.\n되돌릴 수 없습니다. 정말 계속할까요?')) return;
+  if (!confirm('💔 마지막 확인: 정말 모든 데이터를 삭제하시겠습니까?\n(이 작업은 취소할 수 없습니다)')) return;
+
+  try {
+    const r = await fetch(`/api/storage/delete-all?confirm=yes`, { method: 'DELETE' });
+    const j = await r.json();
+    if (j.ok) {
+      alert('✅ 전체 삭제 완료\n\n' + j.msg + '\n경로: ' + j.path);
+      // UI 초기화
+      $('topic-in').value = '';
+      const liveEl = $('live-text'); if (liveEl) liveEl.textContent = '';
+      const finalEl = $('final-text'); if (finalEl) finalEl.textContent = '';
+      // 보고서 패널 숨김
+      const rpPanel = $('report-panel'); if (rpPanel) rpPanel.classList.add('hidden');
+    } else {
+      alert('삭제 실패: ' + (j.error || '알 수 없는 오류'));
+    }
+  } catch (e) {
+    alert('요청 실패: ' + e.message);
+  }
+}
+document.getElementById('btn-delete-all').addEventListener('click', deleteAllTopics);
+
+// ══════════════════════════════════════════════════════════
+//  STT 프로파일 선택
+// ══════════════════════════════════════════════════════════
+const profileDescriptions = {
+  'baseline': { title: '정확도 우선', desc: '최고 정확도 (정부회의용)', accuracy: '매우높음', time: '47초' },
+  'fast-int8': { title: 'int8 양자화', desc: '양자화 최적화 (회의 기록용)', accuracy: '높음', time: '20~25초' },
+  'fast-medium': { title: '회의용 표준', desc: '정확도+속도 최적 균형 (권장)', accuracy: '높음', time: '8~12초' },
+  'ultra-fast': { title: '속도 우선', desc: '극도로 빠른 처리 (메모용)', accuracy: '중간', time: '5~8초' },
+  'gpu-optimized': { title: 'GPU 가속', desc: '극고속 처리 (NVIDIA GPU 필수)', accuracy: '높음', time: '2~4초' },
+};
+
+document.getElementById('profile-select').addEventListener('change', e => {
+  const profile = e.target.value;
+  const info = profileDescriptions[profile];
+  if (info) {
+    const infoEl = $('profile-info');
+    infoEl.innerHTML = `
+      <span>${info.title}</span>
+      <span>${info.desc}</span>
+      <span style="font-size:9px;margin-top:2px">정확도: ${info.accuracy} | 시간: ${info.time}</span>
+    `;
+    localStorage.setItem('stt-profile', profile);
+    console.log(`[Profile] 변경됨: ${profile} — ${info.title}`);
+  }
+});
+
+// 페이지 로드 시 저장된 프로파일 복원
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('stt-profile') || 'fast-medium';
+  const selectEl = $('profile-select');
+  if (selectEl) {
+    selectEl.value = saved;
+    selectEl.dispatchEvent(new Event('change'));
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+//  보고서 패널 (요약 + 문서 생성)
+// ══════════════════════════════════════════════════════════
+const ReportPanel = (() => {
+  let _topic = '';
+  let _docFile = '';
+  let _polling = null;
+
+  function show(topicName) {
+    _topic = topicName;
+    $('rp-topic-in').value = topicName;
+    $('rp-topic-badge').textContent = topicName;
+    $('report-panel').classList.remove('hidden');
+    // 이미 완료 상태면 즉시 확인
+    _checkStatus();
+  }
+
+  function hide() {
+    $('report-panel').classList.add('hidden');
+    _stopPolling();
+  }
+
+  function _setStep(id, state) { // state: '' | 'active' | 'done' | 'error'
+    const el = document.getElementById('rps-' + id);
+    if (!el) return;
+    el.className = 'rp-step' + (state ? ' ' + state : '');
+  }
+
+  function _showMsg(msg, isError) {
+    const el = $('rp-msg');
+    el.style.display = 'block';
+    el.textContent = msg;
+    el.className = 'rp-msg' + (isError ? ' error' : '');
+  }
+
+  function _applyState(st) {
+    if (!st) return;
+    $('rp-steps').style.display = 'flex';
+
+    switch (st.status) {
+      case 'running':
+      case 'summarizing':
+        _setStep('sum', 'active'); _setStep('doc', ''); _setStep('done', '');
+        _showMsg('⏳ ' + (st.message || 'LLM 요약 중...'));
+        $('rp-btn-start').disabled = true;
+        $('rp-result-row').style.display = 'none';
+        break;
+      case 'generating':
+        _setStep('sum', 'done'); _setStep('doc', 'active'); _setStep('done', '');
+        _showMsg('⏳ ' + (st.message || '문서 생성 중...'));
+        break;
+      case 'done':
+        _setStep('sum', 'done'); _setStep('doc', 'done'); _setStep('done', 'done');
+        _showMsg('✅ ' + (st.message || '완료!'));
+        _docFile = st.doc_file || '';
+        $('rp-result-row').style.display = 'flex';
+        $('rp-btn-start').disabled = false;
+        _stopPolling();
+        break;
+      case 'error':
+        _setStep('sum', 'error'); _setStep('doc', 'error'); _setStep('done', 'error');
+        _showMsg('❌ ' + (st.message || '오류 발생'), true);
+        $('rp-btn-start').disabled = false;
+        _stopPolling();
+        break;
+    }
+  }
+
+  async function _checkStatus() {
+    if (!_topic) return;
+    try {
+      const r = await fetch(`/api/summary/status?topic=${encodeURIComponent(_topic)}`);
+      if (!r.ok) return;
+      const st = await r.json();
+      if (st.status !== 'idle') _applyState(st);
+    } catch { /* ignore */ }
+  }
+
+  function _startPolling() {
+    _stopPolling();
+    _polling = setInterval(_checkStatus, 3000);
+  }
+
+  function _stopPolling() {
+    if (_polling) { clearInterval(_polling); _polling = null; }
+  }
+
+  async function startSummary() {
+    const topicVal = $('rp-topic-in').value.trim() || _topic;
+    const doctype  = $('rp-doctype').value;
+    if (!topicVal) { alert('주제를 입력하세요'); return; }
+
+    _topic = topicVal;
+    $('rp-btn-start').disabled = true;
+    $('rp-steps').style.display = 'flex';
+    $('rp-result-row').style.display = 'none';
+    _setStep('sum', 'active'); _setStep('doc', ''); _setStep('done', '');
+    _showMsg('⏳ 요약 생성 요청 중...');
+
+    try {
+      const r = await fetch(
+        `/api/summary?topic=${encodeURIComponent(_topic)}&doctype=${doctype}`,
+        { method: 'POST' }
+      );
+      if (!r.ok) {
+        const txt = await r.text();
+        _showMsg('❌ 요청 실패: ' + txt, true);
+        $('rp-btn-start').disabled = false;
+        return;
+      }
+      _showMsg('⏳ 파이프라인 실행 중... (LLM 요약은 수 분 소요될 수 있습니다)');
+      _startPolling(); // WS 이벤트 + 폴링 병행
+    } catch (e) {
+      _showMsg('❌ 서버 연결 오류: ' + e.message, true);
+      $('rp-btn-start').disabled = false;
+    }
+  }
+
+  async function viewReport() {
+    if (!_topic) return;
+    try {
+      const r = await fetch(`/api/docs/view?topic=${encodeURIComponent(_topic)}`);
+      if (!r.ok) { alert('요약 파일을 찾을 수 없습니다'); return; }
+      const text = await r.text();
+      $('rm-content').textContent = text;
+      $('report-modal').classList.remove('hidden');
+      // 모달 다운로드 버튼 업데이트
+      if (_docFile) {
+        $('rm-btn-dl').onclick = () => downloadDoc();
+      }
+    } catch (e) {
+      alert('로드 실패: ' + e.message);
+    }
+  }
+
+  function downloadDoc() {
+    if (!_topic || !_docFile) return;
+    const url = `/api/docs/download?topic=${encodeURIComponent(_topic)}&file=${encodeURIComponent(_docFile)}`;
+    const a = document.createElement('a');
+    a.href = url; a.download = _docFile; a.click();
+  }
+
+  // WS 이벤트 핸들러 (wsLive onmessage에서 호출)
+  function onWSEvent(data) {
+    if (data.type === 'pipeline_progress' && data.topic === _topic) {
+      _applyState(data.state);
+    }
+  }
+
+  return { show, hide, startSummary, viewReport, downloadDoc, onWSEvent };
+})();
+
+// ══════════════════════════════════════════════════════════
+//  유틸
+// ══════════════════════════════════════════════════════════
+function _ts() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0')
+       + String(d.getMinutes()).padStart(2,'0')
+       + String(d.getSeconds()).padStart(2,'0');
+}
+
+// ══════════════════════════════════════════════════════════
+//  초기화
+// ══════════════════════════════════════════════════════════
+(function init() {
+  _initOpts();
+  _initRmsBars();
+
+  $('btn-start').addEventListener('click', startRecording);
+  $('btn-stop').addEventListener('click',  stopRecording);
+  $('topic-in').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startRecording();
+  });
+
+  // 보고서 패널 버튼
+  $('rp-btn-start').addEventListener('click', () => ReportPanel.startSummary());
+  $('rp-btn-view').addEventListener('click',  () => ReportPanel.viewReport());
+  $('rp-btn-dl').addEventListener('click',    () => ReportPanel.downloadDoc());
+  $('rm-btn-dl').addEventListener('click',    () => ReportPanel.downloadDoc());
+
+  // ESC로 모달 닫기
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.getElementById('report-modal').classList.add('hidden');
+  });
+  document.getElementById('report-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('report-modal'))
+      document.getElementById('report-modal').classList.add('hidden');
+  });
+
+  // 마이크 권한 선 요청 — 페이지 로드 시 미리 허용받아 녹음 시작 시 팝업 방지
+  (async () => {
+    try {
+      const perm = await navigator.permissions.query({ name: 'microphone' });
+      if (perm.state === 'granted') return; // 이미 허용됨
+      // prompt 상태: 조용히 스트림 요청 후 즉시 해제 → 팝업 1회 처리
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+      $('p1-status').textContent = '마이크 권한 허용됨';
+    } catch {
+      $('p1-status').textContent = '마이크 권한 없음 — 허용 후 새로고침';
+      $('btn-start').disabled = true;
+    }
+  })();
+
+  // STT 서버 연결 상태 확인
+  connectLive();
+  $('p2-status').textContent = '/ws/live 연결 중...';
+  setTimeout(() => {
+    if (wsLive && wsLive.readyState === WebSocket.OPEN)
+      $('p2-status').textContent = '서버 연결됨';
+    else
+      $('p2-status').textContent = '서버 연결 대기';
+  }, 1500);
+})();
+</script>
+</body>
+</html>

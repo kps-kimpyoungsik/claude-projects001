@@ -1,0 +1,16 @@
+faster-whisper>=1.2.1
+anthropic>=0.40.0
+python-docx>=1.1.0
+python-pptx>=1.0.0
+openpyxl>=3.1.0
+reportlab>=4.2.0
+fpdf2>=2.8.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+py-hanspell>=1.1
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+sounddevice>=0.5.0
+soundfile>=0.12.1
+numpy>=1.26.0
+watchdog>=4.0.0
