@@ -123,12 +123,20 @@ Builder/Verifier/Curator 자동 스킬 승격 루프"는 00_PROJECT_CONSTITUTION
 추적성 연결만 헌법 §3 범위 안에서 구현함.
 
 **Phase 3 리스크 대응(사용자 제공 비판검증 반영)**:
-- 그래프 복잡도 폭증(Community Detection) → **미구현**. AEGIS 자체 `graphify` 스킬의
-  검증된 개념(god-node 완화·클러스터링)을 향후 참조 대상으로만 기록, 알고리즘 자체
-  구현은 후속 작업(과장 금지).
+- 그래프 복잡도 폭증(Community Detection) → **구현 완료(2026-07-25, D-0993d22f)**.
+  `backend/domain/graph/community_detection.py::detect_communities()` — AEGIS 자체
+  `graphify` 스킬이 쓰는 god-node 완화 개념(밀집 클러스터 그룹핑)을 networkx의 검증된
+  Louvain 구현(모듈성 최적화, seed 고정으로 재현성 보장)으로 실제 구현. `merge_into_graph()`가
+  매 병합 시 전체 그래프에 대해 재계산해 `graph["communities"]`(node_id → community_id)로
+  기록. pytest 4건(고립노드 개별클러스터·밀집클러스터 분리·재현성·broken_ref 방어).
 - 악의적 지식 주입 방지(Parity Check) → `parity_check()` 뼈대 구현, 실제 헌법 파일이
   아직 없어 텍스트 매칭 수준 최소 구현.
-- 지식 수명 관리(Recency 가중치) → **미구현**(설계 문서에만 존재, 후속 작업 대상).
+- 지식 수명 관리(Recency 가중치) → **구현 완료(2026-07-25, D-0993d22f)**.
+  `backend/domain/graph/recency.py::compute_recency_weight()` — 생성 시각 기준 지수감쇠
+  (기본 반감기 30일), 삭제가 아니라 순위 가중치만 낮춤(자산 손실 0). `merge_into_graph()`가
+  신규 노드에 `metadata["created_at"]`을 최초 1회만 스탬프(재병합 시 보존)하고, 전체 노드에
+  대해 `graph["node_recency_weights"]`를 재계산. pytest 4건(타임스탬프 부재 중립값·신규노드
+  가중치1.0·반감기 정확도·미래타임스탬프 클램핑) + merge_into_graph 배선 pytest 2건.
 
 ## Phase 4 — 자율 오케스트레이션 및 멀티 에이전트 협업 (이 프로젝트의 본체 — 헌법 §3)
 - 4.1 태스크 관리 코어 ✅ 구현·검증 완료 — `orchestrator/task_manager.py`:
