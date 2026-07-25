@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>요구사항 관리 — REQ 분류·채번 현황</title>
+<link rel="stylesheet" href="../styles/tokens.css" />
+<link rel="stylesheet" href="../styles/components.css" />
+<link rel="stylesheet" href="../styles/shell.css" />
+<style>
+  /* 공통 스타일은 components.css로 이전(2026-07-22) — 이 화면 전용 레이아웃만 남김 */
+  .req-page-body { padding: 24px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.subtitle { color: var(--text-muted); font-size: 14px; margin-top: 0; }
+  .actor-bar { margin-bottom: 10px; }
+
+  /* [2026-07-23 고도화] 단건 요구사항 등록 — 문서 업로드 없이 애자일 중간 유입 요구사항을
+     바로 채번하는 폼(사용자 지시: "단건 등록 프롬프트가 될 수도 있어서"). */
+  .manual-req-panel { margin-bottom: 14px; }
+  .manual-req-form { margin-top: 8px; border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; max-width: 640px; }
+  .manual-req-form textarea { width: 100%; min-height: 56px; resize: vertical; margin-bottom: 8px; }
+  .manual-req-row { display: flex; gap: 8px; align-items: center; }
+  .manual-req-row select { flex: 1; }
+  .manual-req-status { font-size: 12px; margin-top: 8px; }
+  .manual-req-status.ok { color: var(--ok-text); }
+  .manual-req-status.err { color: var(--danger-text); }
+
+  /* [Phase 6.1] 실패 패턴 리포트 패널 — GET /analytics/failure-patterns 표면화.
+     API 없이(정적서버 등) 열렸거나 패턴이 0건이면 패널 자체를 숨긴다(빈 상자 노출 금지). */
+  .failure-patterns-panel { margin: 4px 0 20px; border: 1px solid var(--border-color); border-radius: var(--border-radius-base); padding: 12px 16px; }
+  .failure-patterns-panel h2 { font-size: 14px; margin: 0 0 8px; color: var(--text-muted); font-weight: 700; }
+  .fp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .fp-table th, .fp-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border-color); }
+  .fp-table th { color: var(--text-muted); font-weight: 600; }
+  .fp-count { display: inline-block; min-width: 22px; text-align: center; border-radius: 999px; padding: 1px 6px; font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+
+  /* §10-5 — 배정 agent · 작업상태(색상은 components.css .work-* 재사용, 이 화면만 있는
+     NOT_DISPATCHED 회색톤 오버라이드만 유지) */
+  .work-NOT_DISPATCHED { color: var(--text-muted); }
+  .work-DISPATCHED { background: color-mix(in srgb, var(--color-brand-primary) 22%, transparent); color: var(--brand-text); }
+  .work-IN_PROGRESS { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+  .work-DONE { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok-text); }
+  .work-BLOCKED { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger-text); }
+  .btn-rechunk:hover { border-color: var(--accent2); color: var(--accent2-text); }
+</style>
+</head>
+<body>
+  <div class="ai-shell">
+    <div class="ai-gnb" id="ai-gnb-slot"></div>
+    <div class="ai-body">
+      <nav class="ai-lnb" id="ai-lnb-slot"></nav>
+      <div class="ai-content">
+        <div class="req-page-body">
+  <h1>③ 요구사항 관리 — REQ 분류·채번 현황</h1>
+  <p class="subtitle">
+    ② 프로젝트 배경에서 등록한 문서를 자동으로 청크·분류해 채번된 요구사항(REQ)을 검토하고,
+    수용/반려/철회/재청킹 요청으로 상태를 전이시킵니다.
+    <span class="src-note">
+      <code>UNDER_REVIEW</code>는 분류기가 확신하지 못해 사람 확인이 필요한 항목입니다(자동 확정 없음).
+      REQ ID를 클릭하면 원문 위치 미리보기로 이동합니다. 회의 중 나온 요청처럼 문서 없이 바로
+      들어오는 애자일 요구사항은 아래 "+ 단건 요구사항 등록"으로 즉시 채번할 수 있습니다.
+    </span>
+    <a href="documents.html" style="color: var(--brand-text); text-decoration: underline dotted;">📎 ② 프로젝트 배경에서 새 문서 등록 →</a>
+  </p>
+
+  <div class="summary-row" id="summary-row"></div>
+
+  <div class="failure-patterns-panel" id="failure-patterns-panel" style="display:none;"></div>
+
+  <div class="manual-req-panel" id="manual-req-panel">
+    <button class="action-btn" id="manual-req-toggle-btn" onclick="toggleManualReqForm()">+ 단건 요구사항 등록</button>
+    <div class="manual-req-form" id="manual-req-form" style="display:none;">
+      <textarea id="manual-req-description" placeholder="요구사항 설명(예: 회의 중 나온 요청 — 로그인 화면에 소셜로그인 버튼 추가)"></textarea>
+      <div class="manual-req-row">
+        <select id="manual-req-doc-type"></select>
+        <select id="manual-req-area"></select>
+        <button class="action-btn btn-accept" onclick="submitManualRequirement()">등록</button>
+      </div>
+      <div class="manual-req-status" id="manual-req-status"></div>
+    </div>
+  </div>
+
+  <div class="actor-bar">
+    행위자(actor):
+    <input type="text" id="actor-input" placeholder="예: hong.gildong" />
+  </div>
+
+  <div class="filters">
+    <input type="text" id="search" placeholder="설명·REQ ID 검색..." />
+    <select id="filter-doc-type"><option value="">전체 문서유형</option></select>
+    <select id="filter-area"><option value="">전체 영역</option></select>
+    <select id="filter-status"><option value="">전체 상태</option></select>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th data-key="req_id">REQ ID</th>
+        <th data-key="doc_type_code">문서유형</th>
+        <th data-key="area_code">영역</th>
+        <th data-key="layer_code">계층</th>
+        <th data-key="requirement_type">유형</th>
+        <th data-key="description">설명</th>
+        <th data-key="doc_type_confidence">문서유형 신뢰도</th>
+        <th data-key="area_confidence">영역 신뢰도</th>
+        <th data-key="lifecycle_status">상태</th>
+        <th data-key="source_ref">출처(source_ref)</th>
+        <th data-key="assigned_agent_command">배정 agent</th>
+        <th data-key="work_status">작업상태</th>
+        <th>액션</th>
+      </tr>
+    </thead>
+    <tbody id="req-tbody"></tbody>
+  </table>
+  <div class="empty-state" id="empty-state" style="display:none;">표시할 요구사항이 없습니다(필터 조건 확인).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="../js/project-scope.js"></script>
+<script src="../js/shell-loader.js"></script>
+<script>
+let ALL_RECORDS = [];
+let SORT_KEY = "req_id";
+let SORT_DESC = false;
+
+// §2-3 상태변경 액션 — 백엔드 API 연결(backend/adapters/api/requirements_api.py).
+// API 경로는 상대(root-absolute, "/requirements/...") 경로를 쓴다: backend/server.py가
+// StaticFiles("frontend", html=True)를 "/"에 마운트해 이 화면과 API가 같은 오리진(uvicorn
+// backend.server:app)에서 서빙되는 것을 실측 확인했다(§API_BASE 판단 근거, 07_API_SERVER_
+// ARCHITECTURE.md §5). `file://`로 직접 열거나 API 없는 정적서버로 열면 아래 호출은
+// 네트워크 오류로 실패 — 이 경우 alert로 사용자에게 알린다(방치 금지).
+const REASON_REQUIRED_STATUSES = new Set(["REJECTED", "WITHDRAWN"]);
+
+function getActor() {
+  let actor = localStorage.getItem("aegis_actor") || "";
+  const input = document.getElementById("actor-input");
+  if (input && !input.value) input.value = actor;
+  return actor || (input ? input.value : "") || "guest";
+}
+
+function setActor(value) {
+  localStorage.setItem("aegis_actor", value || "");
+}
+
+function getProjectId() {
+  return window.AegisProject ? window.AegisProject.getId() : "default";
+}
+
+async function postJSON(url, body) {
+  let res;
+  try {
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch (e) {
+    throw new Error(`네트워크 오류 — API 서버(uvicorn backend.server:app)가 기동 중인지 확인하세요. (${e.message})`);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || data.ok === false) {
+    const msg = (data && data.error && data.error.message) ? data.error.message : `요청 실패 (HTTP ${res.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+async function changeStatus(reqId, status) {
+  let reason = null;
+  if (REASON_REQUIRED_STATUSES.has(status)) {
+    reason = window.prompt(`${status === "REJECTED" ? "반려" : "철회"} 사유를 입력하세요(필수입력):`, "");
+    if (!reason) return; // 취소 또는 빈 입력 — 진행하지 않음(§4-1 status/reason 필수 검증과 정합)
+  }
+  try {
+    const body = { status, actor: getActor() };
+    if (reason) body.reason = reason;
+    const result = await postJSON(`/requirements/${encodeURIComponent(reqId)}/status?project_id=${encodeURIComponent(getProjectId())}`, body);
+    const record = ALL_RECORDS.find(r => r.req_id === reqId);
+    if (record) {
+      record.lifecycle_status = result.data.lifecycle_status;
+      record.status_history = result.data.status_history;
+    }
+    renderSummary(ALL_RECORDS);
+    applyFiltersAndRender();
+  } catch (e) {
+    alert(`상태 변경 실패: ${e.message}`);
+  }
+}
+
+// §5-2 — "재청킹 요청" 액션(신규, 2026-07-20). REJECTED와 동일 사유 필수 규칙을 그대로
+// 따른다(backend request_rechunk()가 set_status(REJECTED, reason="[RECHUNK] ...")를 재사용).
+async function requestRechunk(reqId) {
+  const reason = window.prompt("재청킹 요청 사유를 입력하세요(청킹 경계가 왜 틀렸는지, 필수입력):", "");
+  if (!reason) return;
+  try {
+    const body = { reason, actor: getActor() };
+    const result = await postJSON(`/requirements/${encodeURIComponent(reqId)}/rechunk?project_id=${encodeURIComponent(getProjectId())}`, body);
+    const record = ALL_RECORDS.find(r => r.req_id === reqId);
+    if (record) {
+      record.lifecycle_status = result.data.lifecycle_status;
+      record.status_history = result.data.status_history;
+    }
+    renderSummary(ALL_RECORDS);
+    applyFiltersAndRender();
+  } catch (e) {
+    alert(`재청킹 요청 실패: ${e.message}`);
+  }
+}
+
+function goToPreview(reqId) {
+  location.href = `preview.html?req_id=${encodeURIComponent(reqId)}`;
+}
+
+function confClass(v) { return v >= 0.5 ? "conf-ok" : "conf-warn"; }
+
+function renderConfidence(v) {
+  const pct = Math.round(v * 100);
+  return `<span class="conf-bar-wrap"><span class="conf-bar ${confClass(v)}" style="width:${pct}%"></span></span><span class="conf-num">${pct}%</span>`;
+}
+
+function renderAxisBadge(cls, label, value) {
+  if (!value) return `<span class="badge ${cls} badge-empty">${label}: —</span>`;
+  return `<span class="badge ${cls}">${label}: ${value}</span>`;
+}
+
+function renderSummary(records) {
+  const total = records.length;
+  const pending = records.filter(r => r.lifecycle_status === "UNDER_REVIEW").length;
+  const byArea = {};
+  records.forEach(r => { byArea[r.area_code] = (byArea[r.area_code] || 0) + 1; });
+  const topAreas = Object.entries(byArea).sort((a, b) => b[1] - a[1]).slice(0, 4)
+    .map(([code, n]) => `<div class="summary-card"><div class="num">${n}</div><div class="label">${code}</div></div>`).join("");
+
+  document.getElementById("summary-row").innerHTML = `
+    <div class="summary-card"><div class="num">${total}</div><div class="label">전체 요구사항</div></div>
+    <div class="summary-card ${pending > 0 ? 'warn' : 'ok'}"><div class="num">${pending}</div><div class="label">검토 대기(UNDER_REVIEW)</div></div>
+    ${topAreas}
+  `;
+}
+
+// [Phase 6.1] 실패 패턴 리포트 — GET /analytics/failure-patterns 표면화(읽기전용, 자동수정 없음).
+async function loadFailurePatterns() {
+  const panel = document.getElementById("failure-patterns-panel");
+  let data;
+  try {
+    const res = await fetch(`/analytics/failure-patterns?project_id=${encodeURIComponent(getProjectId())}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    data = json.data;
+  } catch (e) {
+    // API 없이(정적서버) 열렸거나 오류면 패널을 조용히 숨긴다 — 메인 화면(정적 JSON 기반)은
+    // 이 패널 없이도 정상 동작해야 하므로 alert로 방해하지 않는다.
+    panel.style.display = "none";
+    return;
+  }
+
+  const reqPatterns = data.requirement_review_patterns || [];
+  const taskPatterns = data.task_escalation_patterns || [];
+  if (reqPatterns.length === 0 && taskPatterns.length === 0) {
+    panel.style.display = "none";
+    return;
+  }
+
+  const reqRows = reqPatterns.map(p => `
+    <tr>
+      <td><span class="badge badge-doc">${p.doc_type_code}</span> <span class="badge badge-area">${p.area_code}</span></td>
+      <td><span class="fp-count">${p.count}</span></td>
+      <td>${renderConfidence(p.avg_doc_type_confidence)} / ${renderConfidence(p.avg_area_confidence)}</td>
+      <td class="source-ref">${p.example_req_ids.join(", ")}</td>
+    </tr>`).join("");
+
+  const taskRows = taskPatterns.map(p => `
+    <tr>
+      <td><span class="badge badge-area">${p.domain_code}</span></td>
+      <td><span class="fp-count">${p.count}</span></td>
+      <td>${p.reason}</td>
+      <td class="source-ref">${p.example_task_ids.join(", ")}</td>
+    </tr>`).join("");
+
+  panel.innerHTML = `
+    <h2>반복 실패 패턴(Phase 6.1 — 읽기전용 집계, 자동수정 없음)</h2>
+    ${reqPatterns.length ? `
+    <table class="fp-table">
+      <thead><tr><th>문서유형/영역</th><th>건수</th><th>평균 신뢰도(문서유형/영역)</th><th>예시 REQ</th></tr></thead>
+      <tbody>${reqRows}</tbody>
+    </table>` : ""}
+    ${taskPatterns.length ? `
+    <table class="fp-table" style="margin-top:${reqPatterns.length ? '10px' : '0'};">
+      <thead><tr><th>도메인</th><th>건수</th><th>부족 사유</th><th>예시 Task</th></tr></thead>
+      <tbody>${taskRows}</tbody>
+    </table>` : ""}
+  `;
+  panel.style.display = "block";
+}
+
+function populateFilterOptions(records) {
+  const fill = (selectId, key) => {
+    const values = [...new Set(records.map(r => r[key]))].filter(Boolean).sort();
+    const select = document.getElementById(selectId);
+    values.forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      select.appendChild(opt);
+    });
+  };
+  fill("filter-doc-type", "doc_type_code");
+  fill("filter-area", "area_code");
+  fill("filter-status", "lifecycle_status");
+}
+
+function applyFiltersAndRender() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const docType = document.getElementById("filter-doc-type").value;
+  const area = document.getElementById("filter-area").value;
+  const status = document.getElementById("filter-status").value;
+
+  let rows = ALL_RECORDS.filter(r => {
+    if (docType && r.doc_type_code !== docType) return false;
+    if (area && r.area_code !== area) return false;
+    if (status && r.lifecycle_status !== status) return false;
+    if (q && !(r.req_id.toLowerCase().includes(q) || r.description.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    const av = a[SORT_KEY], bv = b[SORT_KEY];
+    const cmp = typeof av === "number" ? av - bv : String(av || "").localeCompare(String(bv || ""));
+    return SORT_DESC ? -cmp : cmp;
+  });
+
+  const tbody = document.getElementById("req-tbody");
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><strong class="req-id-link" onclick="goToPreview('${r.req_id}')" title="청크 위치 미리보기로 이동">${r.req_id}</strong></td>
+      <td><span class="badge badge-doc">문서유형: ${r.doc_type_code}</span></td>
+      <td><span class="badge badge-area">영역: ${r.area_code}</span></td>
+      <td>${renderAxisBadge("badge-layer", "계층", r.layer_code)}</td>
+      <td>${renderAxisBadge("badge-type", "유형", r.requirement_type)}</td>
+      <td class="desc-cell">${r.description.replace(/</g, "&lt;")}</td>
+      <td>${renderConfidence(r.doc_type_confidence)}</td>
+      <td>${renderConfidence(r.area_confidence)}</td>
+      <td><span class="badge-status status-${r.lifecycle_status}">${r.lifecycle_status}</span></td>
+      <td class="source-ref">${r.source_ref}</td>
+      <td class="agent-cell ${r.assigned_agent_command ? '' : 'unassigned'}">${r.assigned_agent_command || '미배정'}</td>
+      <td><span class="badge-work work-${r.work_status || 'NOT_DISPATCHED'}">${r.work_status || 'NOT_DISPATCHED'}</span></td>
+      <td class="actions-cell">
+        <button class="action-btn btn-accept" onclick="changeStatus('${r.req_id}', 'ACCEPTED')">수용</button>
+        <button class="action-btn btn-reject" onclick="changeStatus('${r.req_id}', 'REJECTED')">반려</button>
+        <button class="action-btn btn-withdraw" onclick="changeStatus('${r.req_id}', 'WITHDRAWN')">철회</button>
+        <button class="action-btn btn-rechunk" onclick="requestRechunk('${r.req_id}')" title="청킹 경계 자체가 틀렸을 때(§5)">재청킹 요청</button>
+      </td>
+    </tr>
+  `).join("");
+
+  document.getElementById("empty-state").style.display = rows.length ? "none" : "block";
+}
+
+// [2026-07-23 고도화] 단건 요구사항 등록 — 사용자 지시: "중간 애자일 방식 요구사항이
+// 들어올 수도 있고... 단건 등록 프롬프트가 될 수도 있어서". 문서 업로드 없이 즉시 채번.
+// 영역코드(§5)는 codes.py DOMAIN_CODES와 동일 목록을 로컬 상수로 미러링한다(project-setup.html의
+// AREA_CODES와 동일 관례 — 서버가 이미 검증하므로 프론트 목록이 stale해도 안전, CRZ).
+const AREA_CODES = ["WEB", "WAS", "DB", "SEC", "GRID", "A11Y", "VULN", "GW", "LLM", "RPT"];
+
+function toggleManualReqForm() {
+  const form = document.getElementById("manual-req-form");
+  form.style.display = form.style.display === "none" ? "block" : "none";
+}
+
+async function loadManualReqOptions() {
+  const areaSelect = document.getElementById("manual-req-area");
+  areaSelect.innerHTML = AREA_CODES.map(a => `<option value="${a}">${a}</option>`).join("");
+
+  const docTypeSelect = document.getElementById("manual-req-doc-type");
+  try {
+    const res = await fetch(`/doc-types?project_id=${encodeURIComponent(getProjectId())}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    docTypeSelect.innerHTML = (json.data.doc_types || [])
+      .map(t => `<option value="${t.code}">${t.label}${t.custom ? " (커스텀)" : ""}</option>`)
+      .join("");
+  } catch (e) {
+    console.warn(`[requirements] 문서유형 목록 로드 실패: ${e.message}`);
+  }
+}
+
+async function submitManualRequirement() {
+  const descEl = document.getElementById("manual-req-description");
+  const description = descEl.value.trim();
+  const statusEl = document.getElementById("manual-req-status");
+  if (!description) {
+    statusEl.className = "manual-req-status err";
+    statusEl.textContent = "설명을 입력하세요.";
+    return;
+  }
+  const body = {
+    description,
+    doc_type_code: document.getElementById("manual-req-doc-type").value,
+    area_code: document.getElementById("manual-req-area").value,
+    actor: getActor(),
+  };
+  try {
+    const result = await postJSON(`/requirements?project_id=${encodeURIComponent(getProjectId())}`, body);
+    statusEl.className = "manual-req-status ok";
+    statusEl.textContent = `등록 완료: ${result.data.req_id}`;
+    descEl.value = "";
+    ALL_RECORDS.push(result.data);
+    renderSummary(ALL_RECORDS);
+    applyFiltersAndRender();
+  } catch (e) {
+    statusEl.className = "manual-req-status err";
+    statusEl.textContent = `등록 실패: ${e.message}`;
+  }
+}
+
+async function init() {
+  // [2026-07-22 고도화] 정적 스냅샷(../data/requirements.json)은 프로젝트 구분이 없는
+  // 단일 파일이라 여러 프로젝트를 전환하며 관리할 수 없었다 — 이미 project_id를 지원하는
+  // 실시간 GET /requirements로 전환한다(CRZ, requirements_api.py가 이미 하위호환 필드로
+  // 응답한다고 명시된 API를 그대로 재사용).
+  try {
+    const res = await fetch(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    ALL_RECORDS = json.data.requirements || [];
+  } catch (e) {
+    document.getElementById("empty-state").style.display = "block";
+    document.getElementById("empty-state").textContent = "요구사항 데이터를 불러오지 못했습니다 — file://로 직접 열었거나 서버가 꺼져있을 수 있습니다. 프로젝트 루트에서 ./restart.sh 실행 후 http://127.0.0.1:8899/views/requirements.html 로 접속하세요.";
+    return;
+  }
+  renderSummary(ALL_RECORDS);
+  populateFilterOptions(ALL_RECORDS);
+  applyFiltersAndRender();
+  loadFailurePatterns();  // 실패해도(정적서버 등) 메인 화면 진행을 막지 않음(내부에서 catch)
+  loadManualReqOptions();  // 실패해도 메인 화면 진행을 막지 않음(내부에서 catch)
+
+  const actorInput = document.getElementById("actor-input");
+  actorInput.value = localStorage.getItem("aegis_actor") || "";
+  actorInput.addEventListener("change", () => setActor(actorInput.value.trim()));
+
+  document.getElementById("search").addEventListener("input", applyFiltersAndRender);
+  document.getElementById("filter-doc-type").addEventListener("change", applyFiltersAndRender);
+  document.getElementById("filter-area").addEventListener("change", applyFiltersAndRender);
+  document.getElementById("filter-status").addEventListener("change", applyFiltersAndRender);
+  document.querySelectorAll("th[data-key]").forEach(th => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.key;
+      SORT_DESC = (SORT_KEY === key) ? !SORT_DESC : false;
+      SORT_KEY = key;
+      applyFiltersAndRender();
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>

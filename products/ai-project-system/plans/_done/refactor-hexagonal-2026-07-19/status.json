@@ -1,0 +1,33 @@
+{
+  "task_id": "refactor-hexagonal-2026-07-19",
+  "status": "done",
+  "design_ref": "plans/_plan/05_REFACTOR_BACKEND_FRONTEND_STRUCTURE.md",
+  "impact_scope": [
+    "backend/",
+    "frontend/",
+    "tests/",
+    "graphify_engine/ (removed)",
+    "ingestion/ (removed)",
+    "orchestrator/ (removed)",
+    "core_was_block/ (removed)"
+  ],
+  "steps": [
+    {"id": "backend-domain", "status": "done"},
+    {"id": "backend-application", "status": "done"},
+    {"id": "backend-adapters", "status": "done"},
+    {"id": "task-manager-split-domain-vs-adapter", "status": "done"},
+    {"id": "old-package-removal", "status": "done"},
+    {"id": "frontend-merge", "status": "done"},
+    {"id": "import-fix-verify", "status": "done"},
+    {"id": "domain-subfolder-split", "status": "done"},
+    {"id": "port-interfaces-added", "status": "done"}
+  ],
+  "verification": {
+    "method": "pytest tests/ -v (23 tests, re-run after §2-2/§2-3 domain subfolder split + port interfaces)",
+    "result": "23 passed in 0.46s, 0 failed",
+    "frontend_http_check": "4/4 html + css + 2 data files -> 200 (unchanged this round)"
+  },
+  "note": "L3 REVIEW 상태였으나, 사용자가 2026-07-19 /autolp 배치 평식 게이트에서 plans/_open 2건의 _done 이동을 명시 승인함(AskUserQuestion 응답: 'plans/_open 2건 _done 이동 승인'). L4 DONE으로 확정, plans/_done/로 이동.",
+  "updated_at": "2026-07-19",
+  "approved_by": "user (AskUserQuestion, 2026-07-19 배치 평식 게이트)"
+}

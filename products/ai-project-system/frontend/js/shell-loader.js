@@ -1,0 +1,208 @@
+/*
+ * 공통 GNB/LNB 셸 로더 — frontend/partials/shell-nav.html을 fetch해 각 화면의
+ * #ai-gnb-slot / #ai-lnb-slot에 삽입한다(vanilla JS, 신규 프레임워크 없음).
+ * 각 view HTML은 아래 두 placeholder를 body에 미리 둬야 한다(레이아웃 클래스도 동일하게
+ * 부여해, fetch 완료 전에도 화면이 무너지지 않게 한다):
+ *   <div class="ai-gnb" id="ai-gnb-slot"></div>
+ *   <nav class="ai-lnb" id="ai-lnb-slot"></nav>
+ *
+ * fetch 실패(정적 서버 문제·경로 오류 등) 시 fallbackShell()로 최소 텍스트 네비게이션을
+ * 렌더링한다 — 완전히 빈 화면이 되지 않도록 하는 폴백 로직 (2026-07-20 요구사항).
+ */
+(function () {
+  var THEME_KEY = "aegis_theme";
+
+  /*
+   * [2026-07-22 색상 조화 검증] 페이지 자체(<html>)의 data-theme을 셸 로드보다 먼저
+   * 적용해야 화면이 잠깐 라이트로 번쩍였다가 다크로 바뀌는 깜빡임(FOUC)이 없다 —
+   * IIFE 최상단에서 셸 fetch를 기다리지 않고 즉시 실행한다.
+   */
+  function applyStoredTheme() {
+    var theme = localStorage.getItem(THEME_KEY);
+    if (theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+    else document.documentElement.removeAttribute("data-theme");
+  }
+  applyStoredTheme();
+
+  function initThemeToggle(gnb) {
+    var btn = gnb.querySelector("#ai-gnb-theme-toggle");
+    if (!btn) return;
+    var isDark = localStorage.getItem(THEME_KEY) === "dark";
+    btn.textContent = isDark ? "☀️" : "🌙";
+    btn.addEventListener("click", function () {
+      isDark = !isDark;
+      localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
+      applyStoredTheme();
+      btn.textContent = isDark ? "☀️" : "🌙";
+    });
+  }
+
+  function activePageKey() {
+    var path = location.pathname.split("/").pop() || "index.html";
+    return path.replace(".html", "");
+  }
+
+  function fallbackShell(gnbEl, lnbEl, reason) {
+    gnbEl.innerHTML =
+      '<div class="ai-gnb-brand"><span class="ai-gnb-logo">AI</span>' +
+      '<span class="ai-gnb-title">요구사항 기반 AI 개발 태스크 관리 시스템</span></div>';
+    lnbEl.innerHTML =
+      '<div class="ai-lnb-group">업무 영역</div>' +
+      '<a class="ai-lnb-item" href="project-setup.html">프로젝트 설정</a>' +
+      '<a class="ai-lnb-item" href="requirements.html">요구사항 관리</a>' +
+      '<a class="ai-lnb-item" href="preview.html">청크 미리보기</a>';
+    console.warn("[shell-loader] shell-nav.html 로드 실패 — 폴백 네비게이션 표시: " + reason);
+  }
+
+  function initShell() {
+    var gnbSlot = document.getElementById("ai-gnb-slot");
+    var lnbSlot = document.getElementById("ai-lnb-slot");
+    if (!gnbSlot || !lnbSlot) return; // 이 화면은 셸을 쓰지 않음(예: index.html)
+
+    fetch("../partials/shell-nav.html")
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.text();
+      })
+      .then(function (html) {
+        var tmp = document.createElement("div");
+        tmp.innerHTML = html;
+        var gnb = tmp.querySelector(".ai-gnb");
+        var lnb = tmp.querySelector(".ai-lnb");
+        if (!gnb || !lnb) throw new Error("shell-nav.html 구조 이상(.ai-gnb/.ai-lnb 없음)");
+
+        gnbSlot.replaceWith(gnb);
+        lnbSlot.replaceWith(lnb);
+
+        var actorEl = gnb.querySelector("#ai-gnb-actor");
+        if (actorEl) {
+          actorEl.textContent = localStorage.getItem("aegis_actor") || "guest";
+        }
+
+        var key = activePageKey();
+        var items = lnb.querySelectorAll(".ai-lnb-item[data-nav]");
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].getAttribute("data-nav") === key) items[i].classList.add("active");
+        }
+
+        initProjectSwitcher(gnb);
+        initThemeToggle(gnb);
+      })
+      .catch(function (e) {
+        fallbackShell(gnbSlot, lnbSlot, e.message);
+      });
+  }
+
+  /*
+   * [2026-07-22 고도화] GNB 프로젝트 선택기 — "여러 프로젝트 안에서 애자일 요구사항을
+   * 관리" 요청의 UI 진입점. `/projects` API로 목록을 채우고, 선택값은 `AegisProject`
+   * (frontend/js/project-scope.js)가 관리하는 localStorage 키로 페이지 간 유지한다.
+   * 선택 변경 시 현재 페이지를 새로고침해 그 페이지의 모든 fetch가 새 project_id로
+   * 다시 조회되도록 한다(가장 단순하고 정직한 방식 — 별도 SPA 상태관리 없음, CRZ).
+   */
+  // [2026-07-24 고도화] 프로젝트 진행 상태(WAITING/IMPLEMENTING/VERIFIED) 표시·변경 —
+  // backend/adapters/persistence/project_registry.py의 update_status() +
+  // PATCH /projects/{id}/status 신설에 맞춘 UI. 값 목록은 그 모듈의 PROJECT_STATUSES를
+  // 그대로 미러링한다(SSOT는 파이썬 쪽 — 값이 달라지면 여기도 갱신 필요, CRZ 수동 동기화
+  // 지점, project-setup.html의 AREA_CODES/LAYER_CODES와 동일한 기존 패턴).
+  var PROJECT_STATUSES = ["WAITING", "IMPLEMENTING", "VERIFIED"];
+
+  function initProjectSwitcher(gnb) {
+    var select = gnb.querySelector("#ai-gnb-project-select");
+    var statusSelect = gnb.querySelector("#ai-gnb-project-status");
+    var addBtn = gnb.querySelector("#ai-gnb-new-project-btn");
+    if (!select || !window.AegisProject) return;
+
+    if (statusSelect) {
+      statusSelect.innerHTML = PROJECT_STATUSES.map(function (s) {
+        return '<option value="' + s + '">' + s + "</option>";
+      }).join("");
+    }
+
+    fetch("/projects")
+      .then(function (res) { return res.json(); })
+      .then(function (body) {
+        if (!body || body.ok === false || !body.data) throw new Error("프로젝트 목록 응답 이상");
+        var projects = body.data.projects || [];
+        var currentId = window.AegisProject.getId();
+        select.innerHTML = "";
+        projects.forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name;
+          opt.dataset.status = p.status;
+          select.appendChild(opt);
+        });
+        if (!projects.some(function (p) { return p.id === currentId; })) {
+          currentId = window.AegisProject.DEFAULT_ID;
+        }
+        select.value = currentId;
+        window.AegisProject.setId(currentId);
+        if (statusSelect && select.selectedOptions[0]) {
+          statusSelect.value = select.selectedOptions[0].dataset.status || "IMPLEMENTING";
+        }
+      })
+      .catch(function (e) {
+        console.warn("[shell-loader] 프로젝트 목록 로드 실패: " + e.message);
+        var opt = document.createElement("option");
+        opt.value = window.AegisProject.DEFAULT_ID;
+        opt.textContent = "기본 프로젝트";
+        select.innerHTML = "";
+        select.appendChild(opt);
+      });
+
+    select.addEventListener("change", function () {
+      window.AegisProject.setId(select.value);
+      location.reload();
+    });
+
+    if (statusSelect) {
+      statusSelect.addEventListener("change", function () {
+        var projectId = window.AegisProject.getId();
+        var newStatus = statusSelect.value;
+        fetch("/projects/" + encodeURIComponent(projectId) + "/status", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus }),
+        })
+          .then(function (res) { return res.json().then(function (body) { return { res: res, body: body }; }); })
+          .then(function (r) {
+            if (!r.res.ok || !r.body || r.body.ok === false) {
+              throw new Error((r.body && r.body.error && r.body.error.message) || "상태 변경 실패");
+            }
+          })
+          .catch(function (e) {
+            alert("프로젝트 상태 변경 실패: " + e.message);
+            location.reload(); // 실패 시 select가 실제 서버 상태로 되돌아가도록
+          });
+      });
+    }
+
+    if (addBtn) {
+      addBtn.addEventListener("click", function () {
+        var name = window.prompt("새 프로젝트 이름을 입력하세요:", "");
+        if (!name || !name.trim()) return;
+        fetch("/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim() }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (body) {
+            if (!body || body.ok === false) throw new Error((body && body.error && body.error.message) || "생성 실패");
+            window.AegisProject.setId(body.data.id);
+            location.reload();
+          })
+          .catch(function (e) {
+            alert("프로젝트 생성 실패: " + e.message);
+          });
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initShell);
+  } else {
+    initShell();
+  }
+})();

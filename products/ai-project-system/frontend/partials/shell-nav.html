@@ -1,0 +1,49 @@
+<!--
+  공통 GNB(상단 전역 메뉴) + LNB(좌측 업무영역 메뉴) 조각.
+  frontend/views/*.html이 JS(fetch + innerHTML)로 이 파일을 읽어 #ai-shell-slot에 삽입한다.
+
+  [2026-07-23 워크플로 순서 개편, 사용자 지시: "프로젝트 배경에서의 내용을 기반으로
+  요구사항관리가 그다음 절차로 되고... 전체적인 workflow가 흐름에 맞게"] 메뉴 순서를
+  실제 작업 흐름(프로젝트 설정 → 배경 문서 등록 → 그 문서에서 파생된 요구사항 관리 →
+  세부 미리보기 → 배차 현황)대로 재배열했다 — 이전에는 "요구사항 관리"가 "문서/청킹
+  관리"보다 먼저 나와 있어 메뉴 순서가 실제 의존관계(문서를 올려야 요구사항이 나온다)와
+  어긋나 있었다(실측: documents.html이 upload→classify→REQ채번을 하고, requirements.html은
+  그 결과만 조회 — 화면 코드 자체는 그대로, 메뉴 순서·표현만 흐름에 맞게 조정). "문서/청킹
+  관리"는 이제 "프로젝트 배경(문서 등록)"으로 명명해 역할을 명확히 한다(기능 변경 없음,
+  제안서·사업계획서·인터뷰·녹음·메모·회의록 등 배경 문서를 여기서 등록 — doc-types API로
+  문서유형 동적 추가 가능).
+-->
+<div class="ai-gnb">
+  <div class="ai-gnb-brand">
+    <span class="ai-gnb-logo">AI</span>
+    <span class="ai-gnb-title">요구사항 기반 AI 개발 태스크 관리 시스템</span>
+  </div>
+  <div class="ai-gnb-right">
+    <div class="ai-gnb-project" title="현재 관리 중인 프로젝트 — 여러 프로젝트를 전환하며 각각 독립된 요구사항/태스크를 관리합니다">
+      <span class="ai-gnb-project-icon">📁</span>
+      <select id="ai-gnb-project-select" aria-label="프로젝트 선택"></select>
+      <select id="ai-gnb-project-status" aria-label="프로젝트 상태 변경" title="현재 프로젝트의 진행 상태(WAITING/IMPLEMENTING/VERIFIED)를 변경합니다"></select>
+      <button id="ai-gnb-new-project-btn" class="ai-gnb-project-add" type="button" title="새 프로젝트 추가">+ 새 프로젝트</button>
+    </div>
+    <button id="ai-gnb-theme-toggle" class="ai-gnb-theme-toggle" type="button" title="라이트/다크 화면 전환">🌙</button>
+    <div class="ai-gnb-user">👤 <span id="ai-gnb-actor">guest</span></div>
+  </div>
+</div>
+<nav class="ai-lnb" aria-label="업무영역 메뉴">
+  <div class="ai-lnb-group">업무 영역 — 작업 흐름 순서</div>
+  <a class="ai-lnb-item" data-nav="project-setup" href="project-setup.html">
+    <span class="ai-lnb-icon">🗂️</span> ① 프로젝트 설정
+  </a>
+  <a class="ai-lnb-item" data-nav="documents" href="documents.html">
+    <span class="ai-lnb-icon">📄</span> ② 프로젝트 배경(문서 등록)
+  </a>
+  <a class="ai-lnb-item" data-nav="requirements" href="requirements.html">
+    <span class="ai-lnb-icon">📋</span> ③ 요구사항 관리
+  </a>
+  <a class="ai-lnb-item" data-nav="preview" href="preview.html">
+    <span class="ai-lnb-icon">🔎</span> ④ 청크 미리보기
+  </a>
+  <a class="ai-lnb-item" data-nav="dispatch-dashboard" href="dispatch-dashboard.html">
+    <span class="ai-lnb-icon">📊</span> ⑤ 배차 현황 대시보드
+  </a>
+</nav>

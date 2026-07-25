@@ -1,0 +1,24 @@
+# ai-project-system 로컬 .gitignore
+# 원칙: 코드·설계문서는 추적, 런타임 생성물(로그·캐시·데이터·백업)은 제외 (CRZ — 상위
+# D:\projects\.gitignore의 공통 규칙에 프로젝트 로컬 항목만 추가, 중복 정의 없음)
+
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 서버 실행 산출물
+server.log
+server.error.log
+.server.pid
+
+# 런타임 데이터(요구사항/태스크 저장소) — 코드가 아니라 상태이므로 미추적
+# (scripts/backup.py가 로컬 backup/에 별도 보존)
+data/
+.graphify-out/
+
+# scripts/backup.py 산출물(로컬 안전망 — 저장소에 이중 보존 불필요)
+backup/
+
+# boot_preflight.py 회로차단기 실패이력(런타임 상태, 코드 아님)
+.boot_preflight_failures.json
+server.error.log

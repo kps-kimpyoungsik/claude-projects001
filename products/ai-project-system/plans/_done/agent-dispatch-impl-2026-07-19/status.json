@@ -1,0 +1,52 @@
+{
+  "task_id": "agent-dispatch-impl-2026-07-19",
+  "status": "done",
+  "design_ref": "plans/_plan/06_AGENT_DISPATCH_REPORTING.md",
+  "impact_scope": [
+    "backend/application/services/agent_dispatch_resolver.py (new)",
+    "backend/application/services/task_dispatch_service.py (new)",
+    "backend/application/services/completion_report_service.py (new)",
+    "backend/application/services/dispatch_execution_planner.py (new)",
+    "backend/adapters/persistence/agent_role_usage_log.py (new)",
+    "backend/adapters/aegis_bridge/search_all_adapter.py (new)",
+    "backend/adapters/aegis_bridge/__init__.py (new)",
+    "tests/test_agent_dispatch_resolver.py (new)",
+    "tests/test_task_dispatch_service.py (new)",
+    "tests/test_completion_report_service.py (new)",
+    "tests/test_agent_role_usage_log.py (new)",
+    "tests/test_search_all_adapter.py (new)",
+    "tests/test_dispatch_execution_planner.py (new)",
+    "00_PROJECT_CONSTITUTION.md (§6 진행 로그 1줄 추가만)"
+  ],
+  "steps": [
+    {"id": "agent-dispatch-resolver-3-2", "status": "done"},
+    {"id": "task-dispatch-service-4", "status": "done"},
+    {"id": "completion-report-service-6", "status": "done"},
+    {"id": "agent-role-usage-log-9-2", "status": "done"},
+    {"id": "domain-codes-coverage-check", "status": "done"},
+    {"id": "tests-all-4-new-files", "status": "done"},
+    {
+      "id": "search-all-adapter-realtime-attempt-2026-07-19",
+      "status": "done",
+      "note": "graphify-hub HTTP /search·/mentions(포트 8000) 라이브 실측 — search_all이 참조하는 05_commands/slash/aegis-*.md 인덱스가 없음을 실측 확인(빈 응답). 실시간 어댑터 대신 StaticFallbackAdapter만 구현(resolve_agent_for_domain 내장 fallback_default로 정직 위임)."
+    },
+    {
+      "id": "dispatch-execution-planner-2026-07-19",
+      "status": "done",
+      "note": "dispatch_execution_planner.build_execution_prompts() 추가 — 배차 계획을 Agent(subagent_type=...) 호출용 프롬프트 텍스트로 조립(문자열 조립만, 실제 Agent() 호출 없음)."
+    }
+  ],
+  "verification": {
+    "method": "pytest tests/ -v (기존 37개 + 신규 11개)",
+    "result": "48 passed in 0.84s, 0 failed"
+  },
+  "excluded_from_scope": [
+    "실시간 mcp__aegis__search_all과 동등한 HTTP 어댑터 (실측 결과 graphify-hub:8000 /search·/mentions는 라이브지만 필요 인덱스가 없어 미구현 — search_all_adapter.py 모듈 docstring 참조)",
+    "§9-2 assetize 자동 흡수 파이프라인 연동 (로그 어댑터만 구현, 세션종료/자산화승인 시 실제 흡수 트리거는 이번 범위 밖)",
+    "§3-5 AEGIS agent 로스터 변경의 push 기반 즉시 반영 채널 (설계서 자체가 미확정으로 남긴 항목, TTL 15분 폴링만 구현)",
+    "§4 배차 흐름의 실제 Agent(subagent_type=...) 호출 (dispatch_execution_planner는 프롬프트 텍스트만 조립 — 실제 Agent() 호출은 이 출력을 소비하는 LLM 세션/사람의 몫)"
+  ],
+  "note": "L3 REVIEW였으나 사용자가 2026-07-19 /autolp 배치 평식 게이트에서 _done 이동을 명시 승인함. L4 DONE 확정, plans/_done/로 이동. (참고: 이 트랙 완료 이후에도 같은 도메인 서비스에 두 차례 추가 보강 — group_tasks_by_area_layer §3 그룹핑, dispatch_execution_planner 원문/solution_stack 보강 — 이 있었으나 별도의 작고 자기완결적 단위로 판단해 새 _open 트랙을 만들지 않고 00_PROJECT_CONSTITUTION.md §6 로그로만 추적함.)",
+  "updated_at": "2026-07-19",
+  "approved_by": "user (AskUserQuestion, 2026-07-19 배치 평식 게이트)"
+}

@@ -1,0 +1,170 @@
+/* AEGIS 요구사항 관리 화면 — 공통 컴포넌트 스타일 (2026-07-22 신설, 사용자 지적 반영)
+
+   여러 view(requirements.html·documents.html·preview.html·dispatch-dashboard.html·
+   project-setup.html)에 그대로 복사돼 있던 CSS 블록(배지·요약카드·폼 컨트롤·empty-state·
+   테이블·액션버튼·PII 게이트)을 이 파일 하나로 모았다 — 각 view는 이 파일을 link하고,
+   그 view에서만 쓰는 레이아웃(예: documents.html의 .split/.map-pane)만 자체 <style>에 남긴다.
+   신규 시각 언어 발명 없음 — 기존 클래스명·색상 그대로 이전(CRZ, 픽셀 결과 불변 목표). */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: system-ui, sans-serif;
+}
+
+/* ── 폼 컨트롤(select/input/textarea) — 콤보박스 반전 버그 근본수정 지점 ──────────────
+   `color-scheme`(tokens.css)이 네이티브 팝업 자체를 테마에 맞게 그리게 하고, 여기서는
+   닫힌 상태의 select/input 배경·글자색을 투명이 아니라 테마 배경색으로 명시한다 —
+   `background: transparent`로 두면 팝업이 열릴 때 일부 브라우저가 그 투명을 상속해
+   내용 위에 겹쳐 보이는 문제가 있었다(전문가 검토 — 투명 배경은 겹침 문제의 2차 원인). */
+select, input[type="text"], textarea {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-base);
+  padding: 6px 8px;
+  font-size: 14px;
+  font-family: inherit;
+}
+select:focus, input[type="text"]:focus, textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--color-brand-primary) 45%, transparent);
+  outline-offset: 1px;
+}
+/* 드롭다운 옵션 목록도 명시(일부 브라우저는 select 자체 색만으로 option을 상속하지 않음) */
+select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.filters select, .filters input { padding: 5px 8px; font-size: 13px; }
+
+.actor-bar { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+.actor-bar input { width: 140px; font-size: 13px; }
+
+/* ── 상단 바 (문서/미리보기/등록 화면 공통) ───────────────────────────────────── */
+.topbar { height: 46px; display: flex; align-items: center; padding: 0 18px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; gap: 10px; }
+.topbar h1 { font-size: 14px; font-weight: 700; margin: 0; }
+.topbar .hint { font-size: 12px; color: var(--text-muted); }
+
+/* ── 요약 카드 행 ──────────────────────────────────────────────────────────── */
+/* [2026-07-22 UI/UX 고도화] 숫자+라벨만 있던 밋밋한 박스를 아이콘·좌측 강조선·호버
+   인터랙션이 있는 카드형으로 교체 — "대시보드인데 성의없어 보인다"는 지적 반영. */
+.summary-row { display: flex; gap: 14px; flex-wrap: wrap; margin: 16px 0; }
+.summary-card {
+  border: 1px solid var(--border-color); border-left: 3px solid var(--color-brand-primary);
+  border-radius: 12px; padding: 14px 18px; min-width: 140px;
+  background: var(--bg-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  transition: box-shadow .15s ease, transform .12s ease;
+  display: flex; align-items: center; gap: 12px;
+}
+.summary-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.10); transform: translateY(-2px); }
+.summary-card .icon { font-size: 22px; line-height: 1; }
+.summary-card .num { font-size: 26px; font-weight: 800; line-height: 1.1; }
+.summary-card .label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.summary-card.warn { border-left-color: var(--warn); }
+.summary-card.warn .num { color: var(--warn-text); }
+.summary-card.ok { border-left-color: var(--ok); }
+.summary-card.ok .num { color: var(--ok-text); }
+.summary-card.danger { border-left-color: var(--danger); }
+.summary-card.danger .num { color: var(--danger-text); }
+
+/* ── 배지 (문서유형/영역/계층/유형 축 + work_status) ──────────────────────────
+   plans/_plan/01_PHASE1_DATA_MODEL.md §2-1 — 코드 문자열만으로는 축을 혼동할 수 있어
+   축 이름을 라벨로 병기(예: "영역: SEC")하는 원칙 그대로 유지. */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; margin: 1px 2px 1px 0; }
+.badge-doc { background: color-mix(in srgb, var(--color-brand-primary) 25%, transparent); color: var(--brand-text); }
+.badge-area { background: color-mix(in srgb, var(--accent2) 22%, transparent); color: var(--accent2-text); }
+.badge-layer { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok-text); }
+.badge-type { background: var(--hover-tint); color: var(--text-primary); }
+.badge-img { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+.badge-empty { opacity: .4; }
+
+.badge-status { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.status-RECEIVED, .status-CLASSIFIED { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok-text); }
+.status-UNDER_REVIEW { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+.status-ACCEPTED, .status-IN_PROGRESS, .status-IMPLEMENTED, .status-VERIFIED { background: color-mix(in srgb, var(--color-brand-primary) 25%, transparent); color: var(--brand-text); }
+.status-REJECTED, .status-WITHDRAWN { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger-text); }
+
+.badge-work { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.work-NOT_DISPATCHED { background: var(--hover-tint); color: var(--text-primary); }
+.work-DISPATCHED { background: color-mix(in srgb, var(--color-brand-primary) 22%, transparent); color: var(--brand-text); }
+.work-IN_PROGRESS { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+.work-DONE { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok-text); }
+.work-BLOCKED { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger-text); }
+
+.agent-cell { font-family: monospace; font-size: 13px; }
+.agent-cell.unassigned { color: var(--text-muted); font-style: italic; }
+
+/* ── 신뢰도 막대 ──────────────────────────────────────────────────────────── */
+.conf-bar-wrap { width: 60px; height: 6px; background: var(--hover-tint); border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.conf-bar { height: 100%; }
+.conf-ok { background: var(--ok); }
+.conf-warn { background: var(--warn); }
+.conf-num { font-size: 12px; color: var(--text-muted); }
+
+/* ── 테이블 공통 ──────────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+th { cursor: pointer; user-select: none; color: var(--text-muted); font-weight: 600; }
+th:hover { color: var(--text-primary); }
+
+.desc-cell { max-width: 320px; white-space: pre-line; }
+.source-ref { font-family: monospace; font-size: 13px; color: var(--text-muted); }
+
+/* [2026-07-22 UI/UX 고도화] 화면 상단 설명문 — 핵심 한 문장 + 부가설명(작은 글씨)으로
+   구조화. 예전에는 기술 용어가 뒤섞인 긴 한 문단이었다("성의없어 보인다"는 지적 반영). */
+.subtitle .src-note { display: block; margin-top: 4px; font-size: 12px; opacity: .85; }
+.subtitle code { background: var(--hover-tint); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+.empty-state { padding: 24px; text-align: center; color: var(--text-muted); }
+
+/* ── 액션 버튼 ────────────────────────────────────────────────────────────── */
+/* [2026-07-22 UI/UX 고도화] 평면적인 사각 버튼 대신 더 둥근 모서리·부드러운 그림자·
+   호버시 살짝 떠오르는(lift) 인터랙션으로 최신 플랫 디자인(카드형 서비스 톤) 정렬. */
+.req-id-link { cursor: pointer; text-decoration: underline dotted; }
+.req-id-link:hover { color: var(--brand-text); }
+.actions-cell { white-space: nowrap; }
+.action-btn {
+  font-size: 12px; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--border-color); background: var(--bg-primary);
+  color: var(--text-primary); cursor: pointer; margin-right: 4px;
+  font-weight: 600; transition: box-shadow .15s ease, transform .1s ease, border-color .15s ease;
+}
+.action-btn:hover {
+  background: var(--hover-tint);
+  box-shadow: 0 2px 6px rgba(0,0,0,.10);
+  transform: translateY(-1px);
+}
+.action-btn:active { transform: translateY(0); box-shadow: none; }
+.btn-accept:hover { border-color: var(--ok); color: var(--ok-text); }
+.btn-reject:hover, .btn-withdraw:hover { border-color: var(--danger); color: var(--danger-text); }
+.btn-rechunk:hover { border-color: var(--accent2); color: var(--accent2-text); }
+
+.btn {
+  border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);
+  border-radius: 999px; padding: 9px 20px; font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: box-shadow .15s ease, transform .1s ease, filter .15s ease;
+}
+.btn:hover { box-shadow: 0 3px 10px rgba(0,0,0,.12); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); box-shadow: none; }
+.btn.primary {
+  background: var(--color-brand-primary); border-color: var(--color-brand-primary); color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-brand-primary) 35%, transparent);
+}
+.btn.primary:hover { filter: brightness(1.08); box-shadow: 0 4px 14px color-mix(in srgb, var(--color-brand-primary) 45%, transparent); }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ── PII 클릭스루 게이트 (documents.html·preview.html 공용) ──────────────────── */
+.pii-gate-overlay { position: absolute; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 20; }
+.pii-gate-box { background: var(--bg-primary); border: 1px solid var(--warn); border-radius: var(--border-radius-base); padding: 20px 24px; max-width: 420px; text-align: center; }
+.pii-gate-title { color: var(--warn-text); font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+.pii-gate-msg { font-size: 13px; color: var(--text-primary); line-height: 1.6; margin-bottom: 14px; }
+.pii-gate-actions { display: flex; gap: 8px; justify-content: center; }
+.pii-gate-actions button { font-size: 13px; padding: 6px 14px; border-radius: var(--border-radius-base); cursor: pointer; }
+.pii-gate-actions .btn-confirm { background: var(--warn); border: none; color: #111; font-weight: 600; }
+.pii-gate-actions .btn-cancel { background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); }

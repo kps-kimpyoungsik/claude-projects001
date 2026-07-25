@@ -1,0 +1,20 @@
+# 단일 구성 — WAS 노드 1개로 직접 프록시(로드밸런싱 없음).
+# 사용법: 이 파일 내용을 실제 nginx.conf의 server 블록 안에 포함(include)한다.
+# 실제 적용 전 SEP-1(governance/workflows/SERVER-EXECUTION_POLICY.md)로 포트 충돌 재확인 의무.
+
+server {
+    listen 8080;
+
+    location / {
+        proxy_pass http://127.0.0.1:8790;
+        proxy_set_header Host $host;
+    }
+
+    # WS 엔드포인트(§3-5) — 단일 노드라 팬아웃 불필요, 그대로 프록시만.
+    location /ws/requirements {
+        proxy_pass http://127.0.0.1:8790;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

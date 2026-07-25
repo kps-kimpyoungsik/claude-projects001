@@ -1,0 +1,133 @@
+/* 공통 GNB(상단)+LNB(좌측)+컨텐츠 영역 셸 레이아웃.
+   2026-07-20: 이전 사이클의 페이지 상단 브레드크럼(jnav-bar, nav.css)을 대체하는 진짜
+   전역 셸 — 모든 화면(index.html 제외, 판단 근거는 각 HTML 파일 주석 참조)이 공유한다.
+   마크업 자체는 frontend/partials/shell-nav.html에서 fetch로 로드하고(frontend/js/
+   shell-loader.js), 레이아웃 그리드만 이 CSS가 담당한다 — tokens.css 변수만 사용, 신규
+   프레임워크 없음. */
+
+html, body { height: 100%; }
+
+.ai-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* GNB — 상단 전역 바 */
+.ai-gnb {
+  flex-shrink: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: system-ui, sans-serif;
+}
+.ai-gnb-brand { display: flex; align-items: center; gap: 8px; }
+.ai-gnb-logo {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px;
+  background: var(--color-brand-primary); color: #fff;
+  font-size: 11px; font-weight: 800;
+}
+.ai-gnb-title { font-size: 13px; font-weight: 700; }
+.ai-gnb-user { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+
+/* [2026-07-22 고도화] 프로젝트 선택기 — GNB 우측. 여러 프로젝트를 전환하는 유일한 진입점 */
+.ai-gnb-right { display: flex; align-items: center; gap: 16px; }
+.ai-gnb-project {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 8px; border-radius: 999px;
+  background: var(--bg-secondary, var(--hover-tint));
+  border: 1px solid var(--border-color);
+}
+.ai-gnb-project-icon { font-size: 13px; line-height: 1; }
+#ai-gnb-project-select {
+  border: none; background: transparent; color: var(--text-primary);
+  font-size: 12px; font-weight: 600; padding: 2px 4px; cursor: pointer;
+  max-width: 160px;
+}
+.ai-gnb-project-add {
+  font-size: 11px; font-weight: 700; border: none; cursor: pointer;
+  color: var(--color-brand-primary); background: transparent;
+  padding: 3px 6px; border-radius: 999px; transition: background .15s ease;
+  white-space: nowrap;
+}
+.ai-gnb-project-add:hover { background: color-mix(in srgb, var(--color-brand-primary) 14%, transparent); }
+
+/* [2026-07-22 색상 조화 검증] 다크모드를 실제로 켜볼 수 있는 진입점 — 지금까지는
+   tokens.css가 다크 팔레트를 갖고 있어도 켤 UI가 없어 검증 자체가 불가능했다. */
+.ai-gnb-theme-toggle {
+  border: 1px solid var(--border-color); background: transparent; cursor: pointer;
+  font-size: 14px; width: 30px; height: 30px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s ease;
+}
+.ai-gnb-theme-toggle:hover { background: var(--hover-tint); }
+
+/* 본문 = LNB + 컨텐츠 영역 */
+.ai-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* LNB — 좌측 업무영역 메뉴 */
+.ai-lnb {
+  width: 190px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  padding: 14px 8px;
+  overflow-y: auto;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+}
+.ai-lnb-group {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-muted); padding: 6px 8px 4px;
+}
+.ai-lnb-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; margin-bottom: 3px; border-radius: 10px;
+  color: var(--text-primary); text-decoration: none; font-weight: 600;
+  transition: background .15s ease, transform .1s ease;
+}
+.ai-lnb-item:hover { background: var(--hover-tint); transform: translateX(1px); }
+.ai-lnb-item.active {
+  background: color-mix(in srgb, var(--color-brand-primary) 14%, transparent);
+  color: var(--color-brand-primary);
+}
+.ai-lnb-icon {
+  width: 26px; height: 26px; border-radius: 8px;
+  background: var(--hover-tint);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.ai-lnb-item.active .ai-lnb-icon { background: var(--color-brand-primary); box-shadow: 0 2px 6px color-mix(in srgb, var(--color-brand-primary) 45%, transparent); }
+.ai-lnb-divider { height: 1px; background: var(--border-color); margin: 10px 4px; }
+.ai-lnb-item.ai-lnb-disabled {
+  cursor: default; color: var(--text-muted); opacity: .65;
+}
+.ai-lnb-item.ai-lnb-disabled:hover { background: none; }
+.ai-lnb-badge {
+  margin-left: auto; font-size: 9px; font-weight: 700;
+  background: var(--hover-tint); color: var(--text-muted);
+  border-radius: 999px; padding: 1px 6px;
+}
+
+/* 컨텐츠 영역 — 각 화면 고유 마크업(topbar/wiz-body/split 등)이 그대로 이 안에 들어간다.
+   기존 화면들은 이전에 body 자체를 flex column(height:100vh)으로 썼으므로, 그 역할을
+   .ai-content가 이어받는다(내부 flex 자식들의 overflow:hidden 규칙은 변경 없음). */
+.ai-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}

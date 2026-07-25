@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>프로젝트 등록 — 분야 선택 마법사</title>
+<link rel="stylesheet" href="../styles/tokens.css" />
+<link rel="stylesheet" href="../styles/components.css" />
+<link rel="stylesheet" href="../styles/shell.css" />
+<style>
+  /* 공통 스타일(reset·body·topbar·btn)은 components.css로 이전(2026-07-22) — 마법사
+     전용(사이드바·스텝·태그입력·카드선택) 레이아웃만 남김 */
+  .topbar { height: 48px; padding: 0 20px; }
+  .topbar h1 { font-size: 15px; }
+  .wiz-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+
+  /* workbase wizard.html 벤치마킹: 사이드바 단계 도트 */
+  .sidebar { width: 220px; border-right: 1px solid rgba(128,128,128,.3); padding: 14px 10px; overflow-y: auto; flex-shrink: 0; }
+  .step-item { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: var(--border-radius-base); cursor: pointer; margin-bottom: 2px; }
+  .step-item:hover { background: rgba(128,128,128,.1); }
+  .step-item.active { background: color-mix(in srgb, var(--color-brand-primary) 12%, transparent); }
+  .step-num { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid rgba(128,128,128,.5); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .step-item.active .step-num { background: var(--color-brand-primary); border-color: var(--color-brand-primary); color: #fff; }
+  .step-item.done .step-num { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .step-title { font-size: 13px; font-weight: 600; }
+  .step-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+  .content { flex: 1; overflow-y: auto; padding: 28px 36px; }
+  .panel { display: none; max-width: 640px; }
+  .panel.active { display: block; }
+  h2 { font-size: 20px; margin: 0 0 4px; }
+  .panel p.desc { color: var(--text-muted); font-size: 13px; margin: 0 0 20px; }
+
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin-bottom: 6px; }
+  .field input[type=text], .field textarea { width: 100%; }
+  .field textarea { min-height: 70px; resize: vertical; }
+
+  /* workbase check-cards 벤치마킹 */
+  .card-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .check-card { border: 1.5px solid rgba(128,128,128,.4); border-radius: var(--border-radius-base); padding: 8px 12px; cursor: pointer; font-size: 13px; font-weight: 600; position: relative; }
+  .check-card:hover { border-color: var(--color-brand-primary); }
+  .check-card.selected { border-color: var(--color-brand-primary); background: color-mix(in srgb, var(--color-brand-primary) 10%, transparent); color: var(--brand-text); }
+  .check-card .pii-badge { display: inline-block; margin-left: 6px; font-size: 10px; color: var(--warn-text); }
+
+  .radio-cards { display: flex; flex-direction: column; gap: 8px; }
+  .radio-card { border: 1.5px solid rgba(128,128,128,.4); border-radius: var(--border-radius-base); padding: 10px 12px; cursor: pointer; font-size: 13px; }
+  .radio-card.selected { border-color: var(--color-brand-primary); background: color-mix(in srgb, var(--color-brand-primary) 8%, transparent); }
+  .radio-card .title { font-weight: 700; }
+  .radio-card .sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+  /* workbase tag-input 벤치마킹 */
+  .tag-wrap { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px solid rgba(128,128,128,.4); border-radius: var(--border-radius-base); padding: 8px; min-height: 42px; }
+  .tag { background: color-mix(in srgb, var(--color-brand-primary) 15%, transparent); border: 1px solid var(--color-brand-primary); color: var(--brand-text); border-radius: 999px; font-size: 12px; padding: 3px 9px; display: flex; gap: 4px; align-items: center; }
+  .tag .del { cursor: pointer; opacity: .6; }
+  .tag-input { border: none; outline: none; background: transparent; color: var(--text-primary); font-size: 13px; min-width: 100px; }
+  .tag-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag-sug { border: 1px dashed rgba(128,128,128,.5); border-radius: 999px; font-size: 12px; color: var(--text-muted); padding: 3px 9px; cursor: pointer; }
+  .tag-sug:hover { border-color: var(--color-brand-primary); color: var(--brand-text); }
+  .tag-sug.used { opacity: .3; pointer-events: none; }
+
+  .nav-row { display: flex; gap: 10px; margin-top: 24px; }
+
+  .summary-block { border: 1px solid var(--border-color); border-radius: var(--border-radius-base); padding: 14px; font-size: 13px; margin-bottom: 12px; }
+  .summary-block dt { color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-top: 8px; }
+  .summary-block dt:first-child { margin-top: 0; }
+  .summary-block dd { margin: 2px 0 0; }
+  .error-box { color: var(--danger-text); font-size: 13px; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div class="ai-shell">
+    <div class="ai-gnb" id="ai-gnb-slot"></div>
+    <div class="ai-body">
+      <nav class="ai-lnb" id="ai-lnb-slot"></nav>
+      <div class="ai-content">
+        <div class="topbar"><h1>프로젝트 등록 — 분야 선택 마법사 (0차, plans/_plan/04_PHASE0_PROJECT_REGISTRATION.md 구현)</h1></div>
+        <div class="wiz-body">
+          <div class="sidebar" id="sidebar"></div>
+          <div class="content">
+            <div class="panel" data-panel="1">
+              <h2>기본 정보</h2>
+              <p class="desc">프로젝트명과 목표를 한 문장으로 정의합니다.</p>
+              <div class="field"><label>프로젝트명</label><input type="text" id="f-name" /></div>
+              <div class="field"><label>목표(한 문장)</label><textarea id="f-goal"></textarea></div>
+            </div>
+
+            <div class="panel" data-panel="2">
+              <h2>분야 선택</h2>
+              <p class="desc">이 프로젝트가 다룰 기술영역(§5)과 아키텍처 계층(§5-B)을 선택합니다 — 이후 청크 분류의 1차 필터가 됩니다.</p>
+              <div class="field"><label>기술영역(§5, 복수선택)</label><div class="card-grid" id="areas-grid"></div></div>
+              <div class="field"><label>아키텍처 계층(§5-B, 복수선택)</label><div class="card-grid" id="layers-grid"></div></div>
+            </div>
+
+            <div class="panel" data-panel="3">
+              <h2>첨부 문서 유형</h2>
+              <p class="desc">이 프로젝트에 첨부될 문서 유형(§5-A)을 선택합니다. ⚠ 표시는 개인정보 가능성이 높은 유형입니다.</p>
+              <div class="card-grid" id="doctypes-grid"></div>
+            </div>
+
+            <div class="panel" data-panel="4">
+              <h2>프레임워크·솔루션 사전 등록</h2>
+              <p class="desc">이 프로젝트가 기반으로 삼을 프레임워크·솔루션 태그(1차 설계 §2-4, 자유 태그 + 추천목록).</p>
+              <div class="tag-wrap" id="tag-wrap">
+                <input type="text" class="tag-input" id="tag-input" placeholder="태그 입력 후 Enter..." />
+              </div>
+              <div class="tag-suggestions" id="tag-suggestions"></div>
+            </div>
+
+            <div class="panel" data-panel="5">
+              <h2>정보 접근 정책</h2>
+              <p class="desc">개인정보 포함 문서의 기본 열람 정책(2차 설계 §2-4 PII 게이트의 기본값).</p>
+              <div class="radio-cards" id="policy-cards"></div>
+            </div>
+
+            <div class="panel" data-panel="6">
+              <h2>완료 확인</h2>
+              <p class="desc">
+                아래 내용을 확인하고 프로젝트를 생성합니다 — 생성 즉시 GNB 프로젝트 선택기에 나타나며,
+                이 프로젝트로 전환한 채로 요구사항·문서를 독립적으로 관리할 수 있습니다.
+                <span class="src-note">분야·문서유형 등 세부 설정은 별도로 project_config.json에도 보존됩니다(감사용, 다운로드 선택).</span>
+              </p>
+              <div class="summary-block" id="summary"></div>
+              <div class="error-box" id="error-box"></div>
+              <button class="btn primary" onclick="createProject()">프로젝트 생성</button>
+              <button class="btn" onclick="downloadConfig()">project_config.json 다운로드</button>
+              <a class="btn" href="requirements.html" style="margin-left: 8px; text-decoration: none; display: inline-block;">요구사항 목록으로 이동 →</a>
+            </div>
+
+            <div class="nav-row">
+              <button class="btn" id="btn-prev" onclick="goStep(currentStep-1)">이전</button>
+              <button class="btn primary" id="btn-next" onclick="goStep(currentStep+1)">다음</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="../js/project-scope.js"></script>
+<script src="../js/shell-loader.js"></script>
+<script>
+// graphify_engine/codes.py와 동일한 코드 목록(SSOT는 파이썬 쪽 — 이 목록이 달라지면 여기도 갱신 필요, CRZ 수동 동기화 지점)
+const AREA_CODES = ["WEB","WAS","DB","SEC","GRID","A11Y","VULN","GW","LLM","RPT"];
+const LAYER_CODES = ["SYS","SECU","UXENV","TPI","INTG"];
+const DOC_TYPES = [
+  {code:"BIZ", pii:false}, {code:"ITV", pii:true}, {code:"ENV", pii:false},
+  {code:"QA", pii:false}, {code:"TECH", pii:false}, {code:"OUT", pii:false},
+  {code:"MEMO", pii:true}, {code:"REC", pii:true},
+];
+const RECOMMENDED_SOLUTION_TAGS = ["전자정부표준프레임워크","마이플랫폼","JEX Framework","JEX Operia AI Framework","자체 프레임워크"];
+const ACCESS_POLICIES = [
+  {code:"PERSONAL", title:"개인별", sub:"등록한 본인만 열람 가능"},
+  {code:"ROLE", title:"역할별", sub:"지정된 역할 보유자만 열람 가능"},
+  {code:"SHARED", title:"전체공유", sub:"프로젝트 참여자 전원 열람 가능(기본값)"},
+];
+
+const STEPS = [
+  {num:1, title:"기본 정보", sub:"프로젝트명·목표"},
+  {num:2, title:"분야 선택", sub:"기술영역·계층"},
+  {num:3, title:"첨부 문서 유형", sub:"§5-A 문서유형"},
+  {num:4, title:"프레임워크 등록", sub:"solution_stack"},
+  {num:5, title:"정보 접근 정책", sub:"PII 열람 정책"},
+  {num:6, title:"완료 확인", sub:"JSON 다운로드"},
+];
+
+const state = {
+  selectedAreas: new Set(),
+  selectedLayers: new Set(),
+  selectedDocTypes: new Set(),
+  solutionStack: [],
+  accessPolicy: "SHARED",
+};
+
+let currentStep = 1;
+
+function renderSidebar() {
+  document.getElementById("sidebar").innerHTML = STEPS.map(s => `
+    <div class="step-item ${s.num === currentStep ? 'active' : ''} ${s.num < currentStep ? 'done' : ''}" onclick="goStep(${s.num})">
+      <div class="step-num">${s.num < currentStep ? '✓' : s.num}</div>
+      <div><div class="step-title">${s.title}</div><div class="step-sub">${s.sub}</div></div>
+    </div>
+  `).join("");
+}
+
+function renderCardGrid(containerId, codes, selectedSet, toggleFn) {
+  document.getElementById(containerId).innerHTML = codes.map(c => `
+    <div class="check-card ${selectedSet.has(c) ? 'selected' : ''}" onclick="${toggleFn}('${c}')">${c}</div>
+  `).join("");
+}
+
+function toggleArea(code) { toggleSetMember(state.selectedAreas, code); renderCardGrid("areas-grid", AREA_CODES, state.selectedAreas, "toggleArea"); }
+function toggleLayer(code) { toggleSetMember(state.selectedLayers, code); renderCardGrid("layers-grid", LAYER_CODES, state.selectedLayers, "toggleLayer"); }
+function toggleDocType(code) { toggleSetMember(state.selectedDocTypes, code); renderDocTypeGrid(); }
+
+function toggleSetMember(set, code) { set.has(code) ? set.delete(code) : set.add(code); }
+
+function renderDocTypeGrid() {
+  document.getElementById("doctypes-grid").innerHTML = DOC_TYPES.map(d => `
+    <div class="check-card ${state.selectedDocTypes.has(d.code) ? 'selected' : ''}" onclick="toggleDocType('${d.code}')">
+      ${d.label ? `${d.label} (${d.code})` : d.code}${d.pii ? '<span class="pii-badge">⚠ PII</span>' : ''}
+    </div>
+  `).join("");
+}
+
+function renderTags() {
+  const wrap = document.getElementById("tag-wrap");
+  const existing = wrap.querySelectorAll(".tag");
+  existing.forEach(el => el.remove());
+  const input = document.getElementById("tag-input");
+  state.solutionStack.forEach(tag => {
+    const el = document.createElement("span");
+    el.className = "tag";
+    el.innerHTML = `${tag}<span class="del" onclick="removeTag('${tag}')">×</span>`;
+    wrap.insertBefore(el, input);
+  });
+  document.getElementById("tag-suggestions").innerHTML = RECOMMENDED_SOLUTION_TAGS.map(t => `
+    <span class="tag-sug ${state.solutionStack.includes(t) ? 'used' : ''}" onclick="addTag('${t}')">+ ${t}</span>
+  `).join("");
+}
+
+function addTag(tag) {
+  tag = tag.trim();
+  if (tag && !state.solutionStack.includes(tag)) state.solutionStack.push(tag);
+  renderTags();
+}
+function removeTag(tag) { state.solutionStack = state.solutionStack.filter(t => t !== tag); renderTags(); }
+
+function renderPolicyCards() {
+  document.getElementById("policy-cards").innerHTML = ACCESS_POLICIES.map(p => `
+    <div class="radio-card ${state.accessPolicy === p.code ? 'selected' : ''}" onclick="selectPolicy('${p.code}')">
+      <div class="title">${p.title}</div><div class="sub">${p.sub}</div>
+    </div>
+  `).join("");
+}
+function selectPolicy(code) { state.accessPolicy = code; renderPolicyCards(); }
+
+function buildConfig() {
+  return {
+    project_name: document.getElementById("f-name").value.trim(),
+    goal: document.getElementById("f-goal").value.trim(),
+    selected_areas: [...state.selectedAreas],
+    selected_layers: [...state.selectedLayers],
+    selected_doc_types: [...state.selectedDocTypes],
+    solution_stack: state.solutionStack,
+    access_policy: state.accessPolicy,
+    created_by: "",
+    created_at: "",
+  };
+}
+
+function validateConfig(cfg) {
+  const reasons = [];
+  if (!cfg.project_name) reasons.push("프로젝트명(STEP1)이 비어있음");
+  if (!cfg.goal) reasons.push("목표 한 문장(STEP1)이 비어있음");
+  if (!cfg.selected_areas.length) reasons.push("분야 선택(STEP2)이 비어있음");
+  return reasons;
+}
+
+function renderSummary() {
+  const cfg = buildConfig();
+  document.getElementById("summary").innerHTML = `
+    <dt>프로젝트명</dt><dd>${cfg.project_name || "—"}</dd>
+    <dt>목표</dt><dd>${cfg.goal || "—"}</dd>
+    <dt>기술영역</dt><dd>${cfg.selected_areas.join(", ") || "—"}</dd>
+    <dt>아키텍처 계층</dt><dd>${cfg.selected_layers.join(", ") || "—"}</dd>
+    <dt>첨부 문서 유형</dt><dd>${cfg.selected_doc_types.join(", ") || "—"}</dd>
+    <dt>프레임워크·솔루션</dt><dd>${cfg.solution_stack.join(", ") || "—"}</dd>
+    <dt>접근 정책</dt><dd>${cfg.access_policy}</dd>
+  `;
+  const reasons = validateConfig(cfg);
+  document.getElementById("error-box").textContent = reasons.length ? "⚠ " + reasons.join(" / ") : "";
+  return reasons.length === 0;
+}
+
+// [2026-07-22 고도화] "여러 프로젝트 안에서 관리" — 이 마법사가 만드는 project_config.json
+// (분야·문서유형 세부설정)과는 별개로, 실제 GNB 전환 대상이 되는 ProjectRegistry 엔트리를
+// POST /projects로 실제 생성한다(CRZ — 신규 프로젝트 개념 발명 없음, projects_api.py 재사용).
+async function createProject() {
+  const cfg = buildConfig();
+  if (!renderSummary()) return;
+  try {
+    const res = await fetch("/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: cfg.project_name }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body || body.ok === false) {
+      throw new Error((body && body.error && body.error.message) || `생성 실패 (HTTP ${res.status})`);
+    }
+    if (window.AegisProject) window.AegisProject.setId(body.data.id);
+    document.getElementById("error-box").textContent = "";
+    location.href = "requirements.html";
+  } catch (e) {
+    document.getElementById("error-box").textContent = `⚠ 프로젝트 생성 실패: ${e.message}`;
+  }
+}
+
+function downloadConfig() {
+  const cfg = buildConfig();
+  if (!renderSummary()) return; // 부족사유 있으면 다운로드 중단(python ProjectConfigStore.save()와 동일한 검증 규칙 — 클라이언트에서도 동일 규칙 재적용, 이중 검증)
+  const blob = new Blob([JSON.stringify(cfg, null, 2)], {type: "application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "project_config.json";
+  a.click();
+}
+
+function goStep(n) {
+  if (n < 1 || n > STEPS.length) return;
+  currentStep = n;
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", Number(p.dataset.panel) === n));
+  document.getElementById("btn-prev").disabled = n === 1;
+  document.getElementById("btn-next").style.display = n === STEPS.length ? "none" : "inline-block";
+  if (n === STEPS.length) renderSummary();
+  renderSidebar();
+}
+
+// [2026-07-23 고도화] documents.html("+ 새 문서유형")에서 추가한 프로젝트 배경 문서유형
+// (제안서/회의록 등)이 이 화면의 STEP3 선택지에도 나타나도록 병합한다(CRZ — DOC_TYPES
+// 배열에 추가만, 렌더링 로직은 renderDocTypeGrid() 그대로 재사용).
+async function loadCustomDocTypes() {
+  try {
+    const projectId = window.AegisProject ? window.AegisProject.getId() : "default";
+    const res = await fetch(`/doc-types?project_id=${encodeURIComponent(projectId)}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    (json.data.doc_types || []).forEach(t => {
+      if (t.custom && !DOC_TYPES.some(d => d.code === t.code)) {
+        DOC_TYPES.push({ code: t.code, pii: false, label: t.label });
+      }
+    });
+    renderDocTypeGrid();
+  } catch (e) {
+    console.warn(`[project-setup] 커스텀 문서유형 로드 실패: ${e.message}`);
+  }
+}
+
+function init() {
+  renderCardGrid("areas-grid", AREA_CODES, state.selectedAreas, "toggleArea");
+  renderCardGrid("layers-grid", LAYER_CODES, state.selectedLayers, "toggleLayer");
+  renderDocTypeGrid();
+  renderTags();
+  renderPolicyCards();
+  document.getElementById("tag-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); addTag(e.target.value); e.target.value = ""; }
+  });
+  goStep(1);
+  loadCustomDocTypes();  // 실패해도 마법사 진행을 막지 않음(내부에서 catch)
+}
+
+init();
+</script>
+</body>
+</html>

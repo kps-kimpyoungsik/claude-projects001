@@ -1,0 +1,33 @@
+# 이중화(HA) 구성 — WAS-1(8790)/WAS-2(8791) 두 노드로 팬아웃.
+# 근거: plans/_plan/03_PHASE3_AGENT_GRAPHIFY.md §3-5 최신기술 조사(2025-2026,
+# websocket.org·HAProxy 공식블로그 등) — WS는 장수명 연결이라 least_conn 권고,
+# NATS 팬아웃 백플레인이 있으면 sticky session 없이도 어느 노드에 재연결돼도 안전.
+#
+# 적용 전 SEP-1(governance/workflows/SERVER-EXECUTION_POLICY.md)로 포트 충돌 재확인 의무.
+# 실제 서비스 기동은 서비스배포(C등급) — 평식 승인 후 진행(T100 AACG §3).
+
+upstream was_backend {
+    least_conn;                        # 라운드로빈 대신 — WS는 연결이 짧지 않음
+    server 127.0.0.1:8790;             # WAS-1
+    server 127.0.0.1:8791;             # WAS-2
+}
+
+server {
+    listen 8080;                        # WEB-1
+    # listen 8081;  ← WEB-2는 별도 server 블록 또는 프로세스로 이중화(topology.md 액티브-액티브)
+
+    location / {
+        proxy_pass http://was_backend;
+        proxy_set_header Host $host;
+    }
+
+    # WS 엔드포인트(§3-5) — NATS 팬아웃 덕에 sticky session 불필요.
+    location /ws/requirements {
+        proxy_pass http://was_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;        # 장수명 WS 터널 — timeout 연장(§3-5 조사결과)
+        proxy_send_timeout 3600s;
+    }
+}

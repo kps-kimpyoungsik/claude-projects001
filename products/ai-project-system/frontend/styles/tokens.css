@@ -1,0 +1,81 @@
+/* AEGIS 자율 성장형 운영체제 — 전역 디자인 시스템 토큰
+   workbase/frontend/common/css/variables.css 네이밍 계승 + 다크/라이트 모드 스위치 추가
+
+   2026-07-22 — 밝은 톤 기본화 + 콤보(select) 반전 버그 근본수정(사용자 지적):
+   모든 view HTML이 `data-theme="dark"`를 하드코딩하고 있어 아래 라이트 기본값이 무시되고
+   있었다(실측: frontend/views/*.html 전수 grep) — 그 하드코딩을 제거해 라이트를 기본으로
+   되돌린다. 콤보 반전 버그의 진짜 원인은 `color-scheme` 선언 누락이다: 브라우저 네이티브
+   <select> 드롭다운 팝업(옵션 목록)은 페이지 CSS 변수가 아니라 `color-scheme`을 보고
+   자기 배경/글자색을 정한다 — 이게 없으면 팝업이 OS 기본(대개 라이트)으로 뜨는데 거기에
+   페이지가 지정한 다크텍스트 색(`color: var(--text-primary)` = 흰색)이 얹혀 흰 배경에
+   흰 글자가 되어 안 보였다. `color-scheme`을 테마별로 명시하면 브라우저가 팝업 자체를
+   해당 테마에 맞게 그려 이 반전이 근본적으로 사라진다. */
+:root {
+  color-scheme: light;
+
+  /* 브랜드 — 배경·아이콘·테두리 등 "면적이 넓은" 용도. 작은 텍스트 색으로는 쓰지 않는다
+     (아래 *-text 토큰 참조, 2026-07-22 색상 조화 검증 참고). */
+  --color-brand-primary: #4361ee;
+  --accent2: #7c3aed;
+
+  /* 상태 — 배경·아이콘·좌측 강조선 등 넓은 면적용(원색 그대로). */
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+
+  /* [2026-07-22 색상 조화 검증] 작은 텍스트(배지 글자·숫자·링크)는 원색이 아니라 이
+     *-text 토큰을 쓴다 — 실측(WCAG 2.1 상대휘도 공식 직접 계산): 원색을 흰 배경 텍스트로
+     쓰면 --ok 2.28:1·--warn 2.15:1·--danger 3.76:1·--color-brand-primary 5.02:1로 초록·
+     주황·빨강이 AA 기준(4.5:1)에 크게 못 미쳤다(실제 계산값, 추정 아님). 각 색을 진하게
+     낮춘 shade로 텍스트 전용 변형을 둬 라이트에서 5.0~6.5:1을 확보한다. */
+  --ok-text: #15803d;
+  --warn-text: #b45309;
+  --danger-text: #b91c1c;
+  --brand-text: var(--color-brand-primary);
+  --accent2-text: var(--accent2);
+
+  /* 테마 기본값(라이트) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f6f8;
+  --text-primary: #121212;
+  --text-muted: #6b7280;
+  --border-color: rgba(0,0,0,.15);
+  --hover-tint: rgba(0,0,0,.05);
+
+  /* 형태 */
+  --border-radius-base: 8px;
+  --transition: .15s ease;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* [2026-07-22 색상 조화 검증] 순수 검정(#121212)+순수 흰 글자(#ffffff)는 대비
+     18.7:1로 과도하게 강해 "다크모드가 눈부시고 이질적으로 느껴진다"는 흔한 지적의
+     전형적 원인(Material Design 다크테마 가이드도 순수 화이트 대신 완화된 흰색 권장).
+     배경을 살짝 밝은 무채색 남색조로, 글자를 완화된 오프화이트로 낮춰 라이트 테마와
+     "같은 질감"으로 느껴지도록(대비는 15.8:1로 여전히 매우 높지만 순백/순흑보다 부드러움). */
+  --bg-primary: #15161b;
+  --bg-secondary: #1c1e26;
+  --text-primary: #eef0f3;
+  --text-muted: #a6acb8;
+  --border-color: rgba(148,163,184,.28);
+  --hover-tint: rgba(148,163,184,.12);
+
+  /* 다크에서는 원색 그대로 쓰면 배경과 명도차가 부족해지는(--danger 특히) 대신, 반대로
+     밝혀야 살아난다 — 라이트가 "어둡게", 다크가 "밝게"인 것은 일관성 없어 보이지만
+     실제로는 "배경과의 명도 대비를 항상 충분히 유지"라는 동일 원칙의 자연스러운 결과다
+     (실측: green-400 10.4:1·amber-300 12.5:1·red-400 6.5:1·brand 6.4:1·accent2 7.4:1). */
+  --ok-text: #4ade80;
+  --warn-text: #fcd34d;
+  --danger-text: #f87171;
+  --brand-text: #7c93ff;
+  --accent2-text: #b794f6;
+}
+
+.button-primary {
+  background-color: var(--color-brand-primary);
+  color: var(--bg-primary);
+  padding: 10px 20px;
+  border-radius: var(--border-radius-base);
+}

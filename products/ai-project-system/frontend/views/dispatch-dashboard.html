@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>배차 현황 대시보드 — 작업상태·배정agent 집계</title>
+<link rel="stylesheet" href="../styles/tokens.css" />
+<link rel="stylesheet" href="../styles/components.css" />
+<link rel="stylesheet" href="../styles/shell.css" />
+<style>
+  /*
+    plans/_plan/06_AGENT_DISPATCH_REPORTING.md §10 설계 중 마지막으로 남아있던 항목 —
+    work_status/assigned_agent_command 필드 자체는 이미 requirements.html 컬럼으로 노출
+    완료(2026-07-20)됐지만, "전체를 한눈에 보는 집계 대시보드"는 shell-nav.html에 "준비중"
+    배지로만 남아있었다(실측: LNB 항목이 span 비활성 처리). 이 화면이 그 갭을 메운다.
+    신규 API·신규 필드 없음 — GET /requirements(라이브)가 이미 반환하는 work_status·
+    assigned_agent_command를 이 화면에서 집계만 한다(CRZ).
+
+    공통 스타일(reset·summary-card·badge-work·table·empty-state)은 components.css로
+    이전(2026-07-22) — 이 화면 전용(content-body 여백·section-title)만 남김.
+  */
+  .content-body { padding: 24px; }
+  .dash-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 8px; }
+  .dash-header .dash-icon {
+    font-size: 28px; width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--color-brand-primary) 14%, transparent);
+  }
+  h1 { font-size: 20px; margin: 0; }
+  p.subtitle { color: var(--text-muted); font-size: 13px; margin: 4px 0 0; line-height: 1.6; max-width: 640px; }
+  p.subtitle .src-note { display: block; margin-top: 4px; font-size: 12px; opacity: .85; }
+  p.subtitle code { background: var(--hover-tint); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .summary-row { margin-bottom: 24px; }
+  h2.section-title {
+    font-size: 13px; color: var(--text-muted); margin: 24px 0 10px; font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="ai-shell">
+    <div class="ai-gnb" id="ai-gnb-slot"></div>
+    <div class="ai-body">
+      <nav class="ai-lnb" id="ai-lnb-slot"></nav>
+      <div class="ai-content">
+        <div class="content-body">
+  <div class="dash-header">
+    <div class="dash-icon">📊</div>
+    <div>
+      <h1>배차 현황 대시보드</h1>
+      <p class="subtitle">
+        모든 요구사항이 지금 어느 단계(미배차 → 배차 → 진행 → 완료)에 있는지, 어떤 agent에게
+        얼마나 몰려 있는지를 한눈에 확인합니다.
+        <span class="src-note">실시간 <code>GET /requirements</code> 값을 그대로 집계하며, 별도 저장·캐시는 없습니다.</span>
+      </p>
+    </div>
+  </div>
+
+  <div class="summary-row" id="summary-row"></div>
+
+  <h2 class="section-title">🤖 배정 agent별 현황</h2>
+  <table id="agent-table">
+    <thead><tr><th>배정 agent</th><th>건수</th><th>작업상태 분포</th></tr></thead>
+    <tbody id="agent-tbody"></tbody>
+  </table>
+  <div class="empty-state" id="empty-state" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="../js/project-scope.js"></script>
+<script src="../js/shell-loader.js"></script>
+<script>
+const WORK_STATUS_ORDER = ["BLOCKED", "IN_PROGRESS", "DISPATCHED", "NOT_DISPATCHED", "DONE"];
+// [2026-07-22 UI/UX 고도화] 상태별 아이콘 + 카드 강조색 매핑 — 숫자만 덩그러니 있던
+// 카드에 한눈에 구분되는 시각 신호 추가(신규 상태값 발명 없음, 기존 5개 그대로).
+const WORK_STATUS_META = {
+  NOT_DISPATCHED: { icon: "⏳", label: "미배차", tone: "" },
+  DISPATCHED: { icon: "📨", label: "배차됨", tone: "" },
+  IN_PROGRESS: { icon: "⚙️", label: "진행 중", tone: "" },
+  DONE: { icon: "✅", label: "완료", tone: "ok" },
+  BLOCKED: { icon: "🚫", label: "차단", tone: "danger" },
+};
+
+function renderSummary(records) {
+  const counts = { NOT_DISPATCHED: 0, DISPATCHED: 0, IN_PROGRESS: 0, DONE: 0, BLOCKED: 0 };
+  records.forEach(r => {
+    const s = r.work_status || "NOT_DISPATCHED";
+    counts[s] = (counts[s] || 0) + 1;
+  });
+
+  const cards = [`
+    <div class="summary-card">
+      <div class="icon">📦</div>
+      <div><div class="num">${records.length}</div><div class="label">전체 요구사항</div></div>
+    </div>`]
+    .concat(WORK_STATUS_ORDER.map(s => {
+      const meta = WORK_STATUS_META[s];
+      return `
+        <div class="summary-card ${meta.tone}">
+          <div class="icon">${meta.icon}</div>
+          <div><div class="num">${counts[s] || 0}</div><div class="label">${meta.label} <span class="badge-work work-${s}" style="margin-left:4px;">${s}</span></div></div>
+        </div>`;
+    }));
+  document.getElementById("summary-row").innerHTML = cards.join("");
+}
+
+function renderAgentTable(records) {
+  const byAgent = {};
+  records.forEach(r => {
+    const agent = r.assigned_agent_command || null;
+    const key = agent || "__unassigned__";
+    if (!byAgent[key]) byAgent[key] = { agent, statuses: {} };
+    const s = r.work_status || "NOT_DISPATCHED";
+    byAgent[key].statuses[s] = (byAgent[key].statuses[s] || 0) + 1;
+  });
+
+  const rows = Object.values(byAgent)
+    .sort((a, b) => {
+      const totalA = Object.values(a.statuses).reduce((x, y) => x + y, 0);
+      const totalB = Object.values(b.statuses).reduce((x, y) => x + y, 0);
+      return totalB - totalA;
+    })
+    .map(({ agent, statuses }) => {
+      const total = Object.values(statuses).reduce((x, y) => x + y, 0);
+      const dist = WORK_STATUS_ORDER
+        .filter(s => statuses[s])
+        .map(s => `<span class="badge-work work-${s}">${s} ${statuses[s]}</span>`)
+        .join(" ");
+      return `
+        <tr>
+          <td class="agent-cell ${agent ? '' : 'unassigned'}">${agent || '미배정'}</td>
+          <td>${total}</td>
+          <td>${dist}</td>
+        </tr>`;
+    });
+
+  document.getElementById("agent-tbody").innerHTML = rows.join("");
+}
+
+function getProjectId() {
+  return window.AegisProject ? window.AegisProject.getId() : "default";
+}
+
+async function init() {
+  let records;
+  try {
+    const res = await fetch(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    records = json.data.requirements || [];
+  } catch (e) {
+    document.getElementById("empty-state").style.display = "block";
+    document.getElementById("empty-state").textContent =
+      "요구사항 데이터를 불러오지 못했습니다 — file://로 직접 열었거나 서버가 꺼져있을 수 있습니다. " +
+      "프로젝트 루트에서 ./restart.sh 실행 후 접속하세요.";
+    return;
+  }
+
+  if (records.length === 0) {
+    document.getElementById("empty-state").style.display = "block";
+    document.getElementById("empty-state").textContent = "아직 등록된 요구사항이 없습니다.";
+    document.getElementById("summary-row").innerHTML = "";
+    return;
+  }
+
+  renderSummary(records);
+  renderAgentTable(records);
+}
+
+init();
+</script>
+</body>
+</html>

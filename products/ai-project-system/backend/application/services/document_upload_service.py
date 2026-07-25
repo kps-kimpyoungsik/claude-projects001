@@ -1,0 +1,146 @@
+"""[문서 업로드 파이프라인] 업로드된 파일 → 파싱 → 청킹 → 분류·채번 오케스트레이션.
+
+`plans/_plan/09_DOCUMENT_UPLOAD_PIPELINE.md` 설계 그대로 구현한다. 이 모듈이 지금까지
+따로 존재하던 조각들(ParserPort 어댑터·SPCEngine·requirement_extraction_service)을 실제로
+연결하는 유일한 조립 지점이다 — 새 포맷을 지원하려면 `_ADAPTERS`에 `ParserPort` 구현체를
+추가하기만 하면 된다(§4 설계 그대로, CRZ — 새 등록 메커니즘 발명 없음, 리스트 append만).
+
+`router.py`의 `IngestionRouter`(`NormalizedDocument` 계약)는 쓰지 않는다 — 그 계약에
+실제로 배선된 어댑터가 하나도 없었다는 것이 이번 설계의 근본원인 진단(§1)이었고, 이미 검증된
+`ParserPort` 계약(docx_adapter.py가 실제로 구현·사용 중)을 그대로 재사용하는 편이 "또 하나의
+빈 배선"을 만들지 않는 선택이다. `FORMAT_STRATEGY`는 "이 확장자를 시스템이 인지하는가"의
+SSOT로만 재사용한다(신규 목록 발명 없음, technology_extractor.py와 동일 패턴).
+"""
+
+import io
+import urllib.error
+import urllib.request
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from backend.adapters.llm.ollama_semantic_judge import OLLAMA_URL, OllamaSemanticJudge
+from backend.adapters.parsers.docx_adapter import DocxParserAdapter
+from backend.adapters.parsers.hwp_adapter import HwpParserAdapter
+from backend.adapters.parsers.pdf_adapter import PdfParserAdapter
+from backend.adapters.parsers.pptx_adapter import PptxParserAdapter
+from backend.adapters.parsers.router import FORMAT_STRATEGY
+from backend.adapters.parsers.text_passthrough_adapter import TextPassthroughAdapter
+from backend.adapters.parsers.xlsx_adapter import XlsxParserAdapter
+from backend.adapters.persistence.document_store import DocumentStore
+from backend.adapters.persistence.requirement_store import RequirementRecord, RequirementStore
+from backend.application.ports.parser_port import ParserPort
+from backend.application.services.requirement_extraction_service import extract_requirements_from_chunks
+from backend.domain.chunking.heading_splitter import SemanticBoundarySplitter, SPCEngine
+
+# 2026-07-22 (사용자 지시: "LLM 연동해서 청킹 퀄리티를 끌어올려야 한다"): 업로드마다 Ollama에
+# 짧은 타임아웃으로 헬스체크 후 가용하면 SemanticBoundarySplitter(관계판단 포함), 불가하면
+# 기존 HeadingBoundarySplitter(SPCEngine 기본값)로 조용히 성능저하 — 업로드 자체는 절대
+# 막지 않는다(T99 AIOS 우아한 성능저하).
+_OLLAMA_HEALTH_URL = OLLAMA_URL.rsplit("/api/", 1)[0] + "/api/tags"
+
+
+def _build_chunking_splitter() -> SemanticBoundarySplitter | None:
+    try:
+        urllib.request.urlopen(_OLLAMA_HEALTH_URL, timeout=1.5)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None  # Ollama 미기동 — SPCEngine 기본값(HeadingBoundarySplitter)으로 폴백
+    return SemanticBoundarySplitter(judge=OllamaSemanticJudge())
+
+# 실제 동작하는 ParserPort 구현체만 등록한다 — 새 포맷 어댑터가 완성되면 이 리스트에
+# 추가하는 것이 유일한 확장 지점이다(§4 설계 명시).
+_ADAPTERS: list[ParserPort] = [
+    TextPassthroughAdapter(),
+    DocxParserAdapter(),
+    PptxParserAdapter(),  # 2026-07-22 추가 — python-pptx(기설치) 실동작 구현
+    PdfParserAdapter(),  # 2026-07-22 추가 — pdfplumber(신규 설치) 실동작 구현
+    XlsxParserAdapter(),  # 2026-07-22 추가 — openpyxl(기설치) 실동작 구현
+    HwpParserAdapter(),  # 2026-07-22 추가 — pyhwp(신규 설치) 재사용, 사용자 결정: "olefile+커스텀 파싱"
+]
+
+
+class UnsupportedUploadFormatError(ValueError):
+    """FORMAT_STRATEGY에 없는(시스템이 아예 모르는) 확장자."""
+
+
+class NotImplementedUploadFormatError(ValueError):
+    """FORMAT_STRATEGY에는 있으나(§5-A 문서유형과 연결된 알려진 포맷) 실제 파서가 없는 확장자.
+
+    거짓 성공 응답을 주지 않기 위해 UnsupportedUploadFormatError와 구분한다(T98 AIP —
+    "이 포맷 자체를 모른다"와 "이 포맷은 알지만 아직 못 읽는다"는 사용자에게 다른 메시지가
+    필요한 서로 다른 상황이다).
+    """
+
+
+@dataclass
+class UploadResult:
+    doc_id: str
+    doc_filename: str
+    chunk_count: int
+    requirements_created: list[RequirementRecord] = field(default_factory=list)
+    unclassified_chunk_count: int = 0
+
+
+def _pick_adapter(ext: str) -> ParserPort:
+    ext = ext.lower()
+    if ext not in FORMAT_STRATEGY:
+        raise UnsupportedUploadFormatError(
+            f"미지원 확장자: {ext} (허용: {sorted(FORMAT_STRATEGY)})"
+        )
+    for adapter in _ADAPTERS:
+        if adapter.can_handle(ext):
+            return adapter
+    strategy = FORMAT_STRATEGY[ext]
+    raise NotImplementedUploadFormatError(
+        f"'{ext}'(전략: {strategy})는 아직 실제 파서가 구현되지 않았습니다 — "
+        f"현재 업로드 가능한 확장자: {sorted(a for a in FORMAT_STRATEGY if any(x.can_handle(a) for x in _ADAPTERS))}"
+    )
+
+
+def process_uploaded_file(
+    filename: str,
+    content: bytes,
+    actor: str,
+    req_store: RequirementStore,
+    doc_store: DocumentStore,
+) -> UploadResult:
+    """업로드된 파일 1건을 파싱→청킹→분류·채번까지 끝까지 처리한다.
+
+    filename의 확장자로 어댑터를 고르고, 지원하지 않는/미구현 포맷이면 ValueError 계열
+    예외(UnsupportedUploadFormatError/NotImplementedUploadFormatError)를 던진다 — 호출자
+    (API 라우터)가 이를 4xx 응답으로 변환한다.
+
+    [2026-07-23 정리] 이전에는 `frontend_export_path`가 주어지면 `RequirementStore.
+    export_json()`으로 `frontend/data/requirements.json` 정적 스냅샷을 갱신했으나, 실측
+    검토(§W-5) 결과 documents.html/requirements.html이 이미 2026-07-22에 실시간
+    `GET /requirements?project_id=`로 전환되어 있어 그 정적 파일을 더 이상 아무도 읽지
+    않는다(CRZ — 소비자 없는 write 경로 제거, 회귀 0 `pytest tests/` 확인)."""
+    if not content:
+        raise ValueError("빈 파일은 업로드할 수 없습니다")
+
+    ext = Path(filename).suffix
+    adapter = _pick_adapter(ext)
+
+    markdown = adapter.parse_to_markdown(io.BytesIO(content), metadata={"filename": filename})
+    if not markdown.strip():
+        raise ValueError("파싱 결과가 비어 있습니다 — 문서 내용을 확인하세요")
+
+    doc_id = f"doc-{uuid.uuid4().hex[:12]}"
+    doc_store.save(doc_id, markdown)
+
+    semantic_splitter = _build_chunking_splitter()
+    engine = SPCEngine(splitter=semantic_splitter) if semantic_splitter else SPCEngine()
+    chunks = engine.process_document(markdown, context_label=filename, doc_id=doc_id)
+
+    records = extract_requirements_from_chunks(chunks, req_store, doc_format=ext)
+
+    child_chunk_count = sum(1 for c in chunks if c.parent_id is not None)
+    unclassified = child_chunk_count - len(records)
+
+    return UploadResult(
+        doc_id=doc_id,
+        doc_filename=filename,
+        chunk_count=child_chunk_count,
+        requirements_created=records,
+        unclassified_chunk_count=unclassified,
+    )

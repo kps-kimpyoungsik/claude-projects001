@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>요구사항 — 청크 위치 미리보기</title>
+<link rel="stylesheet" href="../styles/tokens.css" />
+<link rel="stylesheet" href="../styles/components.css" />
+<link rel="stylesheet" href="../styles/shell.css" />
+<style>
+  /* 공통 스타일(topbar·filters·badge·actor-bar·action-btn·empty-state·pii-gate-*)은
+     components.css로 이전(2026-07-22) — 이 화면 전용 레이아웃만 남김 */
+  .split { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+
+  /* 왼쪽: 요구사항 목록 — 영역/유형별 필터 + 그룹핑(관리 포인트) */
+  .list-pane { width: 42%; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; }
+  .filters { padding: 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 0; }
+  .filters select { font-size: 12px; padding: 5px 7px; }
+  .list-scroll { flex: 1; overflow-y: auto; }
+  .group-header { padding: 8px 12px 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: .5px; }
+  .req-row { padding: 10px 12px; border-bottom: 1px solid var(--border-color); cursor: pointer; }
+  .req-row:hover { background: var(--hover-tint); }
+  .req-row.active { background: color-mix(in srgb, var(--color-brand-primary) 12%, transparent); border-left: 3px solid var(--color-brand-primary); }
+  .req-row .id { font-size: 13px; font-weight: 700; }
+  .req-row .desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; max-height: 2.6em; overflow: hidden; }
+
+  /* 오른쪽: 실시간 미리보기 */
+  .preview-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+  .preview-header { padding: 12px 18px; border-bottom: 1px solid var(--border-color); }
+  .breadcrumb { font-size: 12px; color: var(--text-muted); }
+  .breadcrumb .req-id { color: var(--brand-text); font-weight: 700; }
+  .conf-line { font-size: 12px; margin-top: 4px; }
+  .doc-view { flex: 1; overflow-y: auto; padding: 18px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  mark.hit { background: color-mix(in srgb, var(--warn) 35%, transparent); color: var(--text-primary); border-radius: 3px; padding: 1px 2px; }
+  .empty-state { padding: 40px; font-size: 13px; }
+  .img-warning { background: color-mix(in srgb, var(--warn) 15%, transparent); border: 1px solid var(--warn); color: var(--warn-text); border-radius: var(--border-radius-base); padding: 8px 12px; font-size: 12px; margin: 12px 18px 0; }
+
+  .actor-bar { margin-left: auto; }
+  .actor-bar input { width: 110px; font-size: 12px; }
+  .status-actions { margin-top: 8px; display: flex; gap: 6px; }
+</style>
+</head>
+<body>
+  <div class="ai-shell">
+    <div class="ai-gnb" id="ai-gnb-slot"></div>
+    <div class="ai-body">
+      <nav class="ai-lnb" id="ai-lnb-slot"></nav>
+      <div class="ai-content">
+  <div class="topbar">
+    <h1>요구사항 — 청크 위치 미리보기 (2차 설계 구현)</h1>
+    <span class="hint">목록에서 요구사항을 클릭하면 오른쪽에 원문 출처가 즉시 표시됩니다.</span>
+    <span class="actor-bar">행위자(actor): <input type="text" id="actor-input" placeholder="예: hong.gildong" /></span>
+  </div>
+  <div class="split">
+    <div class="list-pane">
+      <div class="filters">
+        <select id="filter-area"><option value="">전체 영역</option></select>
+        <select id="filter-reqtype"><option value="">전체 유형(기능/비기능)</option></select>
+      </div>
+      <div class="list-scroll" id="list-scroll"></div>
+    </div>
+    <div class="preview-pane">
+      <div class="preview-header" id="preview-header">
+        <div class="breadcrumb">왼쪽 목록에서 요구사항을 선택하세요.</div>
+      </div>
+      <div class="doc-view" id="doc-view"><div class="empty-state">미리보기 대기 중</div></div>
+      <div class="pii-gate-overlay" id="pii-gate">
+        <div class="pii-gate-box">
+          <div class="pii-gate-title">⚠ 민감정보(PII) 포함 가능 문서</div>
+          <div class="pii-gate-msg">이 요구사항의 원문 출처에는 개인정보 등 민감정보가 포함되어 있을 수 있습니다.
+            열람 시 접근 기록(actor·시각)이 남습니다. 계속하시겠습니까?</div>
+          <div class="pii-gate-actions">
+            <button class="btn-confirm" onclick="confirmPiiView()">열람 확인</button>
+            <button class="btn-cancel" onclick="cancelPiiView()">취소</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+      </div>
+    </div>
+  </div>
+
+<script src="../js/project-scope.js"></script>
+<script src="../js/shell-loader.js"></script>
+<script>
+let ALL_RECORDS = [];
+let DOC_CACHE = {};   // doc_id -> markdown text (한 번 fetch하면 재사용)
+let ACTIVE_REQ_ID = null;
+let PENDING_PII_REQ_ID = null;
+
+// §2-3/§2-4 백엔드 연결 — requirements.html과 동일한 근거(root-absolute 상대경로,
+// backend/server.py의 StaticFiles 마운트가 같은 오리진으로 서빙).
+const REASON_REQUIRED_STATUSES = new Set(["REJECTED", "WITHDRAWN"]);
+
+function getActor() {
+  const input = document.getElementById("actor-input");
+  const v = (input && input.value.trim()) || localStorage.getItem("aegis_actor") || "";
+  return v || "guest";
+}
+
+function setActor(value) {
+  localStorage.setItem("aegis_actor", value || "");
+}
+
+function getProjectId() {
+  return window.AegisProject ? window.AegisProject.getId() : "default";
+}
+
+async function getJSON(url) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new Error(`네트워크 오류 — API 서버(uvicorn backend.server:app)가 기동 중인지 확인하세요. (${e.message})`);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || data.ok === false) {
+    const msg = (data && data.error && data.error.message) ? data.error.message : `요청 실패 (HTTP ${res.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+async function postJSON(url, body) {
+  let res;
+  try {
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch (e) {
+    throw new Error(`네트워크 오류 — API 서버(uvicorn backend.server:app)가 기동 중인지 확인하세요. (${e.message})`);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || data.ok === false) {
+    const msg = (data && data.error && data.error.message) ? data.error.message : `요청 실패 (HTTP ${res.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+async function changeStatus(reqId, status) {
+  let reason = null;
+  if (REASON_REQUIRED_STATUSES.has(status)) {
+    reason = window.prompt(`${status === "REJECTED" ? "반려" : "철회"} 사유를 입력하세요(필수입력):`, "");
+    if (!reason) return;
+  }
+  try {
+    const body = { status, actor: getActor() };
+    if (reason) body.reason = reason;
+    const result = await postJSON(`/requirements/${encodeURIComponent(reqId)}/status?project_id=${encodeURIComponent(getProjectId())}`, body);
+    const record = ALL_RECORDS.find(r => r.req_id === reqId);
+    if (record) {
+      record.lifecycle_status = result.data.lifecycle_status;
+      record.status_history = result.data.status_history;
+    }
+    renderList();
+    await selectRequirement(reqId); // 헤더 상태 배지 갱신
+  } catch (e) {
+    alert(`상태 변경 실패: ${e.message}`);
+  }
+}
+
+function showPiiGate(reqId) {
+  PENDING_PII_REQ_ID = reqId;
+  document.getElementById("pii-gate").style.display = "flex";
+}
+
+function hidePiiGate() {
+  PENDING_PII_REQ_ID = null;
+  document.getElementById("pii-gate").style.display = "none";
+}
+
+async function confirmPiiView() {
+  const reqId = PENDING_PII_REQ_ID;
+  hidePiiGate();
+  if (!reqId) return;
+  try {
+    // confirm_pii=true — 서버가 preview_access_log.jsonl에 접근 기록을 남긴다(§2-4).
+    await getJSON(`/requirements/${encodeURIComponent(reqId)}/preview?actor=${encodeURIComponent(getActor())}&confirm_pii=true&project_id=${encodeURIComponent(getProjectId())}`);
+  } catch (e) {
+    console.warn(`PII 열람 접근 로그 기록 실패(계속 진행): ${e.message}`);
+  }
+  const record = ALL_RECORDS.find(r => r.req_id === reqId);
+  if (record) await renderDocHighlight(record);
+}
+
+function cancelPiiView() {
+  hidePiiGate();
+  document.getElementById("doc-view").innerHTML = `<div class="empty-state">민감정보 열람을 취소했습니다.</div>`;
+}
+
+function reqTypeLabel(v) {
+  return v === "FUNC" ? "기능" : v === "NFUNC" ? "비기능" : "미분류";
+}
+
+function groupByArea(records) {
+  const groups = {};
+  records.forEach(r => { (groups[r.area_code] = groups[r.area_code] || []).push(r); });
+  return groups;
+}
+
+function renderList() {
+  const areaFilter = document.getElementById("filter-area").value;
+  const reqTypeFilter = document.getElementById("filter-reqtype").value;
+
+  const filtered = ALL_RECORDS.filter(r => {
+    if (areaFilter && r.area_code !== areaFilter) return false;
+    if (reqTypeFilter && r.requirement_type !== reqTypeFilter) return false;
+    return true;
+  });
+
+  const groups = groupByArea(filtered);
+  const html = Object.keys(groups).sort().map(area => `
+    <div class="group-header">영역: ${area} (${groups[area].length}건)</div>
+    ${groups[area].map(r => `
+      <div class="req-row ${r.req_id === ACTIVE_REQ_ID ? 'active' : ''}" onclick="selectRequirement('${r.req_id}')">
+        <div class="id">${r.req_id}</div>
+        <div>
+          <span class="badge badge-area">${r.area_code}</span>
+          <span class="badge badge-type">${reqTypeLabel(r.requirement_type)}</span>
+          ${r.source_is_image ? '<span class="badge badge-img">⚠ 이미지출처</span>' : ''}
+        </div>
+        <div class="desc">${r.description.replace(/</g, "&lt;")}</div>
+      </div>
+    `).join("")}
+  `).join("");
+
+  document.getElementById("list-scroll").innerHTML = html || '<div class="empty-state">조건에 맞는 요구사항이 없습니다.</div>';
+}
+
+function populateFilters() {
+  const areas = [...new Set(ALL_RECORDS.map(r => r.area_code))].sort();
+  const sel = document.getElementById("filter-area");
+  areas.forEach(a => { const o = document.createElement("option"); o.value = a; o.textContent = a; sel.appendChild(o); });
+}
+
+async function fetchDoc(docId) {
+  // [2026-07-22 고도화] 예전에는 `frontend/data/documents/{doc_id}.md` 정적 사본을
+  // 읽었으나, 실제 업로드된 문서는 그 폴더에 쓰이지 않는다(백엔드는 project 격리된
+  // `data/documents/`에 저장) — 정적 사본은 항상 stale/누락이었다(실측 발견). 이미
+  // project_id 인지가 배선된 `/documents/{doc_id}/chunk-map`의 `content` 필드를 그대로
+  // 재사용한다(CRZ — 신규 원문 서빙 경로 발명 없음, PII 게이트도 자동으로 함께 적용됨).
+  if (DOC_CACHE[docId]) return DOC_CACHE[docId];
+  const url = `/documents/${encodeURIComponent(docId)}/chunk-map?actor=${encodeURIComponent(getActor())}&confirm_pii=true&project_id=${encodeURIComponent(getProjectId())}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`문서 로드 실패: ${docId}`);
+  const body = await res.json();
+  if (!body.ok) throw new Error(body.error && body.error.message || `문서 로드 실패: ${docId}`);
+  const text = body.data.content || "";
+  DOC_CACHE[docId] = text;
+  return text;
+}
+
+async function renderDocHighlight(record) {
+  const docView = document.getElementById("doc-view");
+  try {
+    const text = await fetchDoc(record.doc_id);
+    const before = text.slice(0, record.char_start).replace(/</g, "&lt;");
+    const hit = text.slice(record.char_start, record.char_end).replace(/</g, "&lt;");
+    const after = text.slice(record.char_end).replace(/</g, "&lt;");
+    docView.innerHTML = `${before}<mark class="hit" id="hit-mark">${hit}</mark>${after}`;
+    document.getElementById("hit-mark").scrollIntoView({block: "center", behavior: "smooth"});
+  } catch (e) {
+    docView.innerHTML = `<div class="empty-state">${e.message} — file://로 직접 열었거나 서버가 꺼져있을 수 있습니다. 프로젝트 루트에서 ./restart.sh 실행 후 접속하세요.</div>`;
+  }
+}
+
+async function selectRequirement(reqId) {
+  ACTIVE_REQ_ID = reqId;
+  renderList(); // active 하이라이트 갱신
+  const record = ALL_RECORDS.find(r => r.req_id === reqId);
+  const header = document.getElementById("preview-header");
+  const docView = document.getElementById("doc-view");
+  hidePiiGate();
+
+  const breadcrumbPath = (record.heading_path && record.heading_path.length)
+    ? record.heading_path.join(" > ") : "(헤딩 정보 없음)";
+
+  header.innerHTML = `
+    <div class="breadcrumb"><span class="req-id">${record.req_id}</span> · ${record.doc_id || "(출처 문서 미상)"} &gt; ${breadcrumbPath}</div>
+    <div class="conf-line">문서유형 신뢰도 ${Math.round(record.doc_type_confidence*100)}% · 영역 신뢰도 ${Math.round(record.area_confidence*100)}% · 상태: ${record.lifecycle_status}</div>
+    <div class="status-actions">
+      <button class="action-btn btn-accept" onclick="changeStatus('${record.req_id}', 'ACCEPTED')">수용</button>
+      <button class="action-btn btn-reject" onclick="changeStatus('${record.req_id}', 'REJECTED')">반려</button>
+      <button class="action-btn btn-withdraw" onclick="changeStatus('${record.req_id}', 'WITHDRAWN')">철회</button>
+    </div>
+  `;
+
+  if (record.source_is_image) {
+    docView.innerHTML = `<div class="img-warning">⚠ 이 요구사항은 이미지 문서에서 추출됐습니다 — 이미지 분석(OCR/비전) 기반 출처 감지는 아직 미구현입니다(image_analysis_status=${record.image_analysis_status}). 원문 이미지 자체를 미리보기할 수 없습니다.</div>`;
+    return;
+  }
+
+  if (!record.doc_id || record.char_start == null || record.char_end == null) {
+    docView.innerHTML = `<div class="empty-state">이 요구사항은 위치정보(doc_id/char_start/char_end)가 없어 원문 하이라이트를 표시할 수 없습니다.</div>`;
+    return;
+  }
+
+  // §2-4 PII 클릭스루 게이트 — 백엔드 GET /requirements/{req_id}/preview의 contains_pii
+  // 판정을 그대로 신뢰한다(정본: RequirementRecord.contains_pii, pii_detector.py).
+  // 백엔드가 이 req_id를 모르거나(별도 스토어라 정적 데모 데이터와 분리돼 있을 수 있음) API
+  // 자체가 죽어 있으면 404/네트워크 오류가 나는데, 이 경우 게이트를 막지 않고 정적 렌더링으로
+  // 폴백한다(T98 AIP — 이 한계를 콘솔 경고로 정직하게 남긴다. 방치가 아니라 의도된 폴백).
+  let gateInfo = null;
+  try {
+    gateInfo = await getJSON(`/requirements/${encodeURIComponent(reqId)}/preview?actor=${encodeURIComponent(getActor())}&project_id=${encodeURIComponent(getProjectId())}`);
+  } catch (e) {
+    console.warn(`백엔드 preview API 확인 실패 — PII 게이트 없이 정적 데이터로 표시합니다. (${e.message})`);
+  }
+
+  if (gateInfo && gateInfo.data && gateInfo.data.requires_pii_confirmation) {
+    showPiiGate(reqId);
+    return;
+  }
+
+  await renderDocHighlight(record);
+}
+
+async function init() {
+  // [2026-07-22 고도화] 정적 스냅샷 대신 프로젝트별 실시간 목록을 쓴다(requirements.html과
+  // 동일 근거 — CRZ).
+  try {
+    const res = await fetch(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    ALL_RECORDS = json.data.requirements || [];
+  } catch (e) {
+    document.getElementById("list-scroll").innerHTML = `<div class="empty-state">요구사항 데이터를 불러오지 못했습니다 — file://로 직접 열었거나 서버가 꺼져있을 수 있습니다. 프로젝트 루트에서 ./restart.sh 실행 후 접속하세요.</div>`;
+    return;
+  }
+  populateFilters();
+  renderList();
+  document.getElementById("filter-area").addEventListener("change", renderList);
+  document.getElementById("filter-reqtype").addEventListener("change", renderList);
+
+  const actorInput = document.getElementById("actor-input");
+  actorInput.value = localStorage.getItem("aegis_actor") || "";
+  actorInput.addEventListener("change", () => setActor(actorInput.value.trim()));
+
+  // requirements.html에서 REQ ID를 클릭해 넘어온 경우(?req_id=...) 자동 선택.
+  const params = new URLSearchParams(location.search);
+  const reqIdParam = params.get("req_id");
+  if (reqIdParam && ALL_RECORDS.some(r => r.req_id === reqIdParam)) {
+    selectRequirement(reqIdParam);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+name: ai-project-system tests
+
+# [WORK-C 2026-07-25] products/ai-project-system 변경분에만 반응(path filter) — 이 모노레포는
+# 다른 다수 프로젝트를 함께 담고 있어(products/, AI-Project/ 등) 전체 트리거는 CI 낭비다.
+on:
+  push:
+    paths:
+      - "products/ai-project-system/**"
+      - ".github/workflows/ai-project-system-tests.yml"
+  pull_request:
+    paths:
+      - "products/ai-project-system/**"
+
+jobs:
+  pytest:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: products/ai-project-system
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn pytest httpx python-multipart
+          pip install -r infrastructure/requirements.txt || echo "optional deps skipped"
+
+      - name: Run regression suite
+        run: python -m pytest tests/ -q

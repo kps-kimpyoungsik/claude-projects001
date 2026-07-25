@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>문서/청킹 관리 — 문서 전체 청크 경계 뷰</title>
+<link rel="stylesheet" href="../styles/tokens.css" />
+<link rel="stylesheet" href="../styles/components.css" />
+<link rel="stylesheet" href="../styles/shell.css" />
+<style>
+  /*
+    plans/_plan/02_PHASE2_ORCHESTRATION_PREVIEW.md §6 구현 — "문서 중심" 뷰.
+    §2 preview.html("REQ 중심" — 1건의 char 구간만 하이라이트)과 명시적으로 다른 화면이다:
+    이 화면은 문서 1건 전체를 펼쳐서 그 문서에서 나온 모든 REQ의 청크 경계를 동시에
+    보여주고(§6-1 표), 미청킹 구간(gap)·겹치는 구간(overlap)까지 진단 신호로 표시한다(§6-2).
+    상태변경 액션은 여기 두지 않는다(§6-1 — 중복 액션 UI 금지, 상태변경은 §2 preview.html로
+    위임). 진입점은 이번 구현 사이클에서 신규 documents.html로 확정한다(§6-3 (B) 채택 —
+    LNB에 "문서/청킹 관리"가 이미 "준비중"으로 등록돼 있어 그 항목을 활성화하는 편이
+    자연스럽다고 판단, 최종 반영은 shell-nav.html 소유 에이전트에게 위임).
+
+    공통 스타일(topbar·actor-bar·empty-state·pii-gate-*)은 components.css로 이전
+    (2026-07-22) — 이 화면 전용(문서목록·청크맵·팝오버 색상)만 남김.
+  */
+  .actor-bar { margin-left: auto; }
+  .actor-bar input { width: 110px; font-size: 12px; }
+
+  .split { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+
+  /* 왼쪽: 문서 목록 — GET /requirements?project_id=(실시간)에서 doc_id를 유도해 청크
+     건수와 함께 표시. [2026-07-23 정리] 이전 정적 requirements.json 스냅샷 참조는
+     2026-07-22에 이미 실시간 API로 전환 완료된 상태를 뒤늦게 반영(코드는 그대로, 주석만
+     stale했음 — 실측 재확인 결과 이 화면은 스냅샷을 fetch한 적이 없었음). */
+  .list-pane { width: 30%; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; }
+  .list-scroll { flex: 1; overflow-y: auto; }
+
+  /* [2026-07-22] 문서 등록(업로드) — plans/_plan/09_DOCUMENT_UPLOAD_PIPELINE.md §4 설계
+     그대로 구현. 새 시각 언어 없음 — 기존 action-btn 스타일 재사용(CRZ). */
+  .upload-box { padding: 12px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+  .upload-row { display: flex; gap: 6px; align-items: center; }
+  .upload-row input[type="file"] { flex: 1; min-width: 0; font-size: 12px; }
+  .upload-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+  .upload-status { font-size: 12px; margin-top: 8px; }
+  .upload-status.ok { color: var(--ok-text); }
+  .upload-status.err { color: var(--danger-text); }
+  .upload-status .req-link { color: var(--brand-text); text-decoration: underline dotted; cursor: pointer; }
+  /* [2026-07-23 고도화] 프로젝트 배경 문서유형 동적 추가 UI — 제안서/사업계획서/인터뷰/
+     녹음/메모/회의록 등 유형을 이 프로젝트에 즉시 추가할 수 있음을 보여준다. */
+  .doc-type-row { margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+  .doc-type-label { color: var(--text-muted); }
+  .doc-type-chip { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; margin-right: 3px; background: var(--hover-tint); color: var(--text-primary); }
+  .doc-type-chip.custom { background: color-mix(in srgb, var(--accent2) 18%, transparent); color: var(--accent2-text); }
+  .doc-row { padding: 10px 12px; border-bottom: 1px solid var(--border-color); cursor: pointer; }
+  .doc-row:hover { background: var(--hover-tint); }
+  .doc-row.active { background: color-mix(in srgb, var(--color-brand-primary) 12%, transparent); border-left: 3px solid var(--color-brand-primary); }
+  .doc-row .id { font-size: 13px; font-weight: 700; }
+  .doc-row .count { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+  /* 오른쪽: 청크맵 */
+  .map-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+  .map-header { padding: 12px 18px; border-bottom: 1px solid var(--border-color); }
+  .map-header .title { font-size: 14px; font-weight: 700; }
+  .legend { display: flex; gap: 12px; margin-top: 6px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+  .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  .sw-even { background: color-mix(in srgb, var(--color-brand-primary) 30%, transparent); }
+  .sw-odd { background: color-mix(in srgb, var(--accent2) 30%, transparent); }
+  .sw-gap { background: repeating-linear-gradient(45deg, var(--border-color), var(--border-color) 3px, var(--hover-tint) 3px, var(--hover-tint) 6px); }
+  .sw-overlap { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--danger) 55%, transparent), color-mix(in srgb, var(--danger) 55%, transparent) 3px, color-mix(in srgb, var(--danger) 20%, transparent) 3px, color-mix(in srgb, var(--danger) 20%, transparent) 6px); }
+
+  .map-body { flex: 1; overflow-y: auto; padding: 18px; font-size: 14px; line-height: 1.9; white-space: pre-wrap; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .chunk-seg { border-radius: 2px; padding: 1px 0; cursor: pointer; }
+  .chunk-seg.even { background: color-mix(in srgb, var(--color-brand-primary) 22%, transparent); }
+  .chunk-seg.odd { background: color-mix(in srgb, var(--accent2) 22%, transparent); }
+  .chunk-seg:hover { outline: 1px solid var(--color-brand-primary); }
+  .gap-seg { background: repeating-linear-gradient(45deg, var(--border-color), var(--border-color) 3px, var(--hover-tint) 3px, var(--hover-tint) 6px); }
+  .overlap-seg { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--danger) 50%, transparent), color-mix(in srgb, var(--danger) 50%, transparent) 3px, color-mix(in srgb, var(--danger) 15%, transparent) 3px, color-mix(in srgb, var(--danger) 15%, transparent) 6px); cursor: pointer; }
+  .req-badge { font-size: 10px; font-weight: 700; vertical-align: super; opacity: .85; margin-left: 1px; }
+
+  .empty-state { padding: 40px; font-size: 13px; }
+
+  /* 청크 클릭 팝오버(읽기 전용 — §6-1: 상태변경은 preview.html로 위임) */
+  .popover { position: absolute; z-index: 20; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--border-radius-base); padding: 12px 14px; max-width: 320px; box-shadow: 0 6px 18px rgba(0,0,0,.2); display: none; }
+  .popover .p-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .popover .p-row { font-size: 12px; color: var(--text-muted); margin-bottom: 3px; }
+  .popover .p-link { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--brand-text); text-decoration: underline dotted; cursor: pointer; }
+  .popover .p-close { position: absolute; top: 6px; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 13px; }
+  .popover .overlap-list-item { font-size: 12px; padding: 3px 0; border-top: 1px solid var(--border-color); }
+
+  /* components.css 기본 pii-gate-overlay는 z-index:20 — 이 화면의 팝오버(z-index:20)보다
+     위에 있어야 하므로 30으로 override */
+  .pii-gate-overlay { z-index: 30; }
+</style>
+</head>
+<body>
+  <div class="ai-shell">
+    <div class="ai-gnb" id="ai-gnb-slot"></div>
+    <div class="ai-body">
+      <nav class="ai-lnb" id="ai-lnb-slot"></nav>
+      <div class="ai-content">
+  <div class="topbar">
+    <h1>② 프로젝트 배경(문서 등록) — 제안서·사업계획서·인터뷰·녹음·메모·회의록 등</h1>
+    <span class="hint">이 화면에 올린 문서가 자동 청킹·분류되어 ③ 요구사항 관리의 REQ로 이어집니다. 왼쪽 목록에서 문서를 선택하면 청크 경계가 오른쪽에 표시됩니다.</span>
+    <span class="actor-bar">행위자(actor): <input type="text" id="actor-input" placeholder="예: hong.gildong" /></span>
+  </div>
+  <div class="split">
+    <div class="list-pane">
+      <div class="upload-box">
+        <div class="upload-row">
+          <input type="file" id="upload-file-input" accept=".txt,.md,.docx,.pptx,.pdf,.xlsx,.hwp" />
+          <button class="action-btn" id="upload-btn" onclick="uploadDocument()">문서 등록</button>
+        </div>
+        <div class="upload-hint">지원 포맷: .txt·.md·.docx·.pptx·.pdf·.xlsx·.hwp</div>
+        <div class="upload-status" id="upload-status"></div>
+        <div class="doc-type-row">
+          <span class="doc-type-label">문서유형(등록된 종류):</span>
+          <span id="doc-type-chips"></span>
+          <button class="action-btn" id="add-doc-type-btn" onclick="addDocType()" title="제안서/회의록 등 새 문서유형을 이 프로젝트에 동적으로 추가">+ 새 문서유형</button>
+        </div>
+      </div>
+      <div class="list-scroll" id="doc-list-scroll"></div>
+    </div>
+    <div class="map-pane">
+      <div class="map-header" id="map-header">
+        <div class="title">왼쪽 목록에서 문서를 선택하세요.</div>
+      </div>
+      <div class="map-body" id="map-body"><div class="empty-state">문서맵 대기 중</div></div>
+      <div class="popover" id="popover">
+        <span class="p-close" onclick="closePopover()">닫기 ✕</span>
+        <div id="popover-content"></div>
+      </div>
+      <div class="pii-gate-overlay" id="pii-gate">
+        <div class="pii-gate-box">
+          <div class="pii-gate-title">⚠ 민감정보(PII) 포함 가능 문서</div>
+          <div class="pii-gate-msg">이 문서에서 나온 요구사항 중 하나 이상이 개인정보 등 민감정보를 포함하고
+            있을 수 있습니다. 열람 시 접근 기록(actor·시각)이 남습니다. 계속하시겠습니까?</div>
+          <div class="pii-gate-actions">
+            <button class="btn-confirm" onclick="confirmPiiView()">열람 확인</button>
+            <button class="btn-cancel" onclick="cancelPiiView()">취소</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+      </div>
+    </div>
+  </div>
+
+<script src="../js/project-scope.js"></script>
+<script src="../js/shell-loader.js"></script>
+<script>
+let ALL_RECORDS = [];   // GET /requirements?project_id= 실시간 응답 — 문서 목록·청크 건수 집계용
+let DOC_INDEX = [];     // [{doc_id, doc_filename, count}]
+let ACTIVE_DOC_ID = null;
+let PENDING_PII_DOC_ID = null;
+
+function getActor() {
+  const input = document.getElementById("actor-input");
+  const v = (input && input.value.trim()) || localStorage.getItem("aegis_actor") || "";
+  return v || "guest";
+}
+
+function getProjectId() {
+  return window.AegisProject ? window.AegisProject.getId() : "default";
+}
+
+// [2026-07-22] POST /documents/upload — plans/_plan/09_DOCUMENT_UPLOAD_PIPELINE.md §4.
+// 백엔드가 확장자로 문서유형·영역을 자동 분류·채번한다(§5-A 6축 분류기 재사용) — 업로드
+// 시점에 사람이 "이 문서는 어떤 문서다"를 수동 지정하는 필드는 없다(과잉설계 회피, CRZ:
+// classify_chunk()가 이미 하는 일을 업로드 폼에서 중복 요구하지 않음).
+async function uploadDocument() {
+  const input = document.getElementById("upload-file-input");
+  const statusEl = document.getElementById("upload-status");
+  const file = input.files && input.files[0];
+  if (!file) {
+    statusEl.className = "upload-status err";
+    statusEl.textContent = "파일을 먼저 선택하세요.";
+    return;
+  }
+
+  const btn = document.getElementById("upload-btn");
+  btn.disabled = true;
+  statusEl.className = "upload-status";
+  statusEl.textContent = "업로드 중...";
+
+  const form = new FormData();
+  form.append("file", file);
+  form.append("actor", getActor());
+  form.append("project_id", getProjectId());
+
+  try {
+    const res = await fetch("/documents/upload", { method: "POST", body: form });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.ok === false) {
+      const msg = (data && data.error && data.error.message) ? data.error.message : `업로드 실패 (HTTP ${res.status})`;
+      throw new Error(msg);
+    }
+
+    const d = data.data;
+    statusEl.className = "upload-status ok";
+    statusEl.innerHTML =
+      `등록 완료: <strong>${escapeHtml(d.doc_filename)}</strong> — 청크 ${d.chunk_count}개, ` +
+      `요구사항 ${d.requirements_created.length}건 채번(미분류 ${d.unclassified_chunk_count}개). ` +
+      `<span class="req-link" onclick="location.href='requirements.html'">요구사항 목록에서 확인 →</span>`;
+    input.value = "";
+
+    // 방금 만든 문서를 목록에 반영하고 바로 청크맵을 열어 보여준다(§4 설계 그대로).
+    // [2026-07-22 고도화] 정적 스냅샷 대신 프로젝트별 실시간 목록 사용(CRZ).
+    const res2 = await fetch(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
+    const json2 = await res2.json();
+    ALL_RECORDS = (json2.ok && json2.data.requirements) || [];
+    DOC_INDEX = buildDocIndex(ALL_RECORDS);
+    renderDocList();
+    await selectDocument(d.doc_id);
+  } catch (e) {
+    statusEl.className = "upload-status err";
+    statusEl.textContent = `업로드 실패: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function getJSON(url) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new Error(`네트워크 오류 — API 서버(uvicorn backend.server:app)가 기동 중인지 확인하세요. (${e.message})`);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || data.ok === false) {
+    const msg = (data && data.error && data.error.message) ? data.error.message : `요청 실패 (HTTP ${res.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function buildDocIndex(records) {
+  const byDoc = {};
+  records.forEach(r => {
+    if (!r.doc_id) return;
+    if (!byDoc[r.doc_id]) byDoc[r.doc_id] = { doc_id: r.doc_id, doc_filename: r.doc_filename || `${r.doc_id}.md`, count: 0 };
+    byDoc[r.doc_id].count += 1;
+  });
+  return Object.values(byDoc).sort((a, b) => a.doc_id.localeCompare(b.doc_id));
+}
+
+function renderDocList() {
+  const html = DOC_INDEX.map(d => `
+    <div class="doc-row ${d.doc_id === ACTIVE_DOC_ID ? 'active' : ''}" onclick="selectDocument('${d.doc_id}')">
+      <div class="id">${d.doc_id}</div>
+      <div class="count">${d.count}건 청킹됨 · ${d.doc_filename}</div>
+    </div>
+  `).join("");
+  document.getElementById("doc-list-scroll").innerHTML = html || '<div class="empty-state">등록된 문서가 없습니다.</div>';
+}
+
+function closePopover() {
+  document.getElementById("popover").style.display = "none";
+}
+
+function showPopoverForChunk(evt, chunk) {
+  evt.stopPropagation();
+  const pop = document.getElementById("popover");
+  const content = document.getElementById("popover-content");
+  content.innerHTML = `
+    <div class="p-title">${chunk.req_id}</div>
+    <div class="p-row">영역: ${chunk.area_code} · 문서유형: ${chunk.doc_type_code}</div>
+    <div class="p-row">헤딩 경로: ${(chunk.heading_path || []).join(" > ") || "(없음)"}</div>
+    <div class="p-row">char [${chunk.char_start}, ${chunk.char_end}) · 상태: ${chunk.lifecycle_status}</div>
+    <div class="p-link" onclick="location.href='preview.html?req_id=${encodeURIComponent(chunk.req_id)}'">이 요구사항 미리보기로 이동 →</div>
+  `;
+  positionPopover(evt, pop);
+}
+
+function showPopoverForOverlap(evt, chunks) {
+  evt.stopPropagation();
+  const pop = document.getElementById("popover");
+  const content = document.getElementById("popover-content");
+  content.innerHTML = `
+    <div class="p-title">⚠ 겹침 구간(${chunks.length}건 중복 청킹)</div>
+    ${chunks.map(c => `
+      <div class="overlap-list-item">
+        <strong>${c.req_id}</strong> — ${c.area_code} · char [${c.char_start}, ${c.char_end})
+        <div class="p-link" onclick="location.href='preview.html?req_id=${encodeURIComponent(c.req_id)}'">미리보기로 이동 →</div>
+      </div>
+    `).join("")}
+  `;
+  positionPopover(evt, pop);
+}
+
+function positionPopover(evt, pop) {
+  const mapPane = document.querySelector(".map-pane");
+  const rect = mapPane.getBoundingClientRect();
+  pop.style.left = Math.min(evt.clientX - rect.left + 8, rect.width - 340) + "px";
+  pop.style.top = (evt.clientY - rect.top + 8) + "px";
+  pop.style.display = "block";
+}
+
+/* §6-2 — content + 정렬된 chunks만으로 gap(미청킹)·overlap(겹침)까지 계산하는 일반 스윕
+   알고리즘. 서버는 정렬된 원자료만 주고(중복 계산 로직 두지 않음), 렌더링 시점에 한 번만
+   계산한다. 경계점(char_start/char_end) 전체를 모아 구간을 나누고, 각 구간을 덮는 청크
+   집합 크기로 gap(0건)/normal(1건)/overlap(2건 이상)을 판정한다 — 몇 개가 겹치든 동일하게
+   처리되는 일반해(청크 2개 초과 중복도 안전). */
+function buildSegments(content, chunks) {
+  const boundarySet = new Set([0, content.length]);
+  chunks.forEach(c => { boundarySet.add(c.char_start); boundarySet.add(c.char_end); });
+  const boundaries = [...boundarySet].sort((a, b) => a - b);
+
+  const segments = [];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const segStart = boundaries[i];
+    const segEnd = boundaries[i + 1];
+    if (segStart >= segEnd) continue;
+    const covering = chunks.filter(c => c.char_start <= segStart && c.char_end >= segEnd);
+    segments.push({ start: segStart, end: segEnd, covering });
+  }
+  return segments;
+}
+
+function renderChunkMap(content, chunks) {
+  const mapBody = document.getElementById("map-body");
+  if (!chunks.length) {
+    // 청크가 하나도 없어도 문서 전체는 "완전한 gap"으로 보여준다(§6-2 진단 신호).
+    mapBody.innerHTML = `<span class="gap-seg" title="이 문서는 아직 청킹되지 않았습니다">${escapeHtml(content)}</span>`;
+    return;
+  }
+  const segments = buildSegments(content, chunks);
+  const chunkColorIndex = {};
+  chunks.forEach((c, i) => { chunkColorIndex[c.req_id] = i % 2 === 0 ? "even" : "odd"; });
+
+  const html = segments.map((seg, idx) => {
+    const text = escapeHtml(content.slice(seg.start, seg.end));
+    if (seg.covering.length === 0) {
+      return `<span class="chunk-seg gap-seg" title="미청킹 구간 [${seg.start}, ${seg.end})">${text}</span>`;
+    }
+    if (seg.covering.length >= 2) {
+      const chunksJson = encodeURIComponent(JSON.stringify(seg.covering));
+      return `<span class="chunk-seg overlap-seg" data-chunks="${chunksJson}" onclick="onOverlapClick(event, this)">${text}<span class="req-badge">⚠${seg.covering.length}</span></span>`;
+    }
+    const chunk = seg.covering[0];
+    const chunkJson = encodeURIComponent(JSON.stringify(chunk));
+    const cls = chunkColorIndex[chunk.req_id];
+    return `<span class="chunk-seg ${cls}" data-chunk="${chunkJson}" onclick="onChunkClick(event, this)">${text}</span>`;
+  }).join("");
+
+  mapBody.innerHTML = html;
+}
+
+function onChunkClick(evt, el) {
+  const chunk = JSON.parse(decodeURIComponent(el.dataset.chunk));
+  showPopoverForChunk(evt, chunk);
+}
+
+function onOverlapClick(evt, el) {
+  const chunks = JSON.parse(decodeURIComponent(el.dataset.chunks));
+  showPopoverForOverlap(evt, chunks);
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function showPiiGate(docId) {
+  PENDING_PII_DOC_ID = docId;
+  document.getElementById("pii-gate").style.display = "flex";
+}
+
+function hidePiiGate() {
+  PENDING_PII_DOC_ID = null;
+  document.getElementById("pii-gate").style.display = "none";
+}
+
+async function confirmPiiView() {
+  const docId = PENDING_PII_DOC_ID;
+  hidePiiGate();
+  if (!docId) return;
+  try {
+    const result = await getJSON(`/documents/${encodeURIComponent(docId)}/chunk-map?actor=${encodeURIComponent(getActor())}&confirm_pii=true&project_id=${encodeURIComponent(getProjectId())}`);
+    renderChunkMap(result.data.content, result.data.chunks);
+  } catch (e) {
+    document.getElementById("map-body").innerHTML = `<div class="empty-state">${e.message}</div>`;
+  }
+}
+
+function cancelPiiView() {
+  hidePiiGate();
+  document.getElementById("map-body").innerHTML = `<div class="empty-state">민감정보 열람을 취소했습니다.</div>`;
+}
+
+async function selectDocument(docId) {
+  ACTIVE_DOC_ID = docId;
+  renderDocList();
+  closePopover();
+  hidePiiGate();
+
+  const docMeta = DOC_INDEX.find(d => d.doc_id === docId);
+  const header = document.getElementById("map-header");
+  const mapBody = document.getElementById("map-body");
+  header.innerHTML = `
+    <div class="title">${docId}${docMeta ? ` · ${docMeta.doc_filename} (${docMeta.count}건 청킹됨)` : ""}</div>
+    <div class="legend">
+      <span><span class="swatch sw-even"></span>청크(짝수)</span>
+      <span><span class="swatch sw-odd"></span>청크(홀수)</span>
+      <span><span class="swatch sw-gap"></span>미청킹 구간(gap)</span>
+      <span><span class="swatch sw-overlap"></span>겹침 구간(overlap)</span>
+    </div>
+  `;
+  mapBody.innerHTML = `<div class="empty-state">문서맵 로드 중...</div>`;
+
+  try {
+    const result = await getJSON(`/documents/${encodeURIComponent(docId)}/chunk-map?actor=${encodeURIComponent(getActor())}&project_id=${encodeURIComponent(getProjectId())}`);
+    if (result.data.requires_pii_confirmation) {
+      mapBody.innerHTML = `<div class="empty-state">민감정보 확인이 필요합니다.</div>`;
+      showPiiGate(docId);
+      return;
+    }
+    renderChunkMap(result.data.content, result.data.chunks);
+  } catch (e) {
+    mapBody.innerHTML = `<div class="empty-state">${e.message} — API 서버(uvicorn backend.server:app)가 기동 중인지 확인하세요.</div>`;
+  }
+}
+
+// [2026-07-23 고도화] 프로젝트 배경 문서유형 동적 추가 — 사용자 지시: "제안서,사업계획서,
+// 수행계획서,인터뷰, 녹음, 메모, 회의록 등 항목은 동적으로 추가 가능하도록".
+async function loadDocTypes() {
+  try {
+    const res = await fetch(`/doc-types?project_id=${encodeURIComponent(getProjectId())}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    const types = json.data.doc_types || [];
+    document.getElementById("doc-type-chips").innerHTML = types
+      .map(t => `<span class="doc-type-chip${t.custom ? " custom" : ""}" title="${t.code}">${escapeHtml(t.label)}</span>`)
+      .join("");
+  } catch (e) {
+    console.warn(`[documents] 문서유형 목록 로드 실패: ${e.message}`);
+  }
+}
+
+async function addDocType() {
+  const label = window.prompt("추가할 문서유형 이름을 입력하세요(예: 회의록, 착수보고서):", "");
+  if (!label || !label.trim()) return;
+  try {
+    const res = await fetch(`/doc-types?project_id=${encodeURIComponent(getProjectId())}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: label.trim(), actor: getActor() }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.ok === false) {
+      throw new Error((data && data.error && data.error.message) || `추가 실패 (HTTP ${res.status})`);
+    }
+    await loadDocTypes();
+  } catch (e) {
+    alert(`문서유형 추가 실패: ${e.message}`);
+  }
+}
+
+async function init() {
+  try {
+    const res = await fetch(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    ALL_RECORDS = json.data.requirements || [];
+  } catch (e) {
+    document.getElementById("doc-list-scroll").innerHTML = `<div class="empty-state">요구사항 데이터를 불러오지 못했습니다 — file://로 직접 열었거나 서버가 꺼져있을 수 있습니다. 프로젝트 루트에서 ./restart.sh 실행 후 http://127.0.0.1:8899/views/documents.html 로 접속하세요.</div>`;
+    return;
+  }
+  DOC_INDEX = buildDocIndex(ALL_RECORDS);
+  renderDocList();
+  loadDocTypes();  // 실패해도 메인 화면 진행을 막지 않음(내부에서 catch)
+
+  const actorInput = document.getElementById("actor-input");
+  actorInput.value = localStorage.getItem("aegis_actor") || "";
+  actorInput.addEventListener("change", () => localStorage.setItem("aegis_actor", actorInput.value.trim()));
+
+  document.querySelector(".map-body").addEventListener("click", closePopover);
+
+  // requirements.html/preview.html에서 ?doc_id=...로 넘어온 경우 자동 선택.
+  const params = new URLSearchParams(location.search);
+  const docIdParam = params.get("doc_id");
+  if (docIdParam && DOC_INDEX.some(d => d.doc_id === docIdParam)) {
+    selectDocument(docIdParam);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
