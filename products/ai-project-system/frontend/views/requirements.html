@@ -41,6 +41,13 @@
   .work-DONE { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok-text); }
   .work-BLOCKED { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger-text); }
   .btn-rechunk:hover { border-color: var(--accent2); color: var(--accent2-text); }
+
+  /* [2026-07-25 §8-9 D-24d7a5fd] STEP6 디자인시안확정 배너 — 04_PHASE0 §7 배너 표
+     그대로(MANDATORY=빨간, STRATEGIC_MANDATORY=노란). PASS는 배지 자체를 렌더링 안 함
+     (필요한 경우에만 눈에 띄게, 과잉 UI 회피). */
+  .gate-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .gate-BLOCK_MANDATORY { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger-text); }
+  .gate-WARN_STRATEGIC { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
 </style>
 </head>
 <body>
@@ -103,6 +110,7 @@
         <th data-key="doc_type_confidence">문서유형 신뢰도</th>
         <th data-key="area_confidence">영역 신뢰도</th>
         <th data-key="lifecycle_status">상태</th>
+        <th data-key="design_gate_status">시안게이트</th>
         <th data-key="source_ref">출처(source_ref)</th>
         <th data-key="assigned_agent_command">배정 agent</th>
         <th data-key="work_status">작업상태</th>
@@ -209,6 +217,13 @@ function goToPreview(reqId) {
 }
 
 function confClass(v) { return v >= 0.5 ? "conf-ok" : "conf-warn"; }
+
+// [2026-07-25 §8-9 D-24d7a5fd] STEP6 배너 — PASS는 조용히 빈 셀(과잉 UI 회피), 그 외만 배지.
+function renderGateBadge(status) {
+  if (!status || status === "PASS") return "";
+  const label = status === "BLOCK_MANDATORY" ? "⚠ 시안 선행 필요" : "△ 시안 권장";
+  return `<span class="gate-badge gate-${status}" title="${status === "BLOCK_MANDATORY" ? "이 요구사항은 디자인 시안 확정 없이는 진행이 강하게 제한됩니다(§7)." : "디자인 시안을 먼저 확정하는 편이 권장됩니다(강제 아님, §7)."}">${label}</span>`;
+}
 
 function renderConfidence(v) {
   const pct = Math.round(v * 100);
@@ -337,6 +352,7 @@ function applyFiltersAndRender() {
       <td>${renderConfidence(r.doc_type_confidence)}</td>
       <td>${renderConfidence(r.area_confidence)}</td>
       <td><span class="badge-status status-${r.lifecycle_status}">${r.lifecycle_status}</span></td>
+      <td>${renderGateBadge(r.design_gate_status)}</td>
       <td class="source-ref">${r.source_ref}</td>
       <td class="agent-cell ${r.assigned_agent_command ? '' : 'unassigned'}">${r.assigned_agent_command || '미배정'}</td>
       <td><span class="badge-work work-${r.work_status || 'NOT_DISPATCHED'}">${r.work_status || 'NOT_DISPATCHED'}</span></td>

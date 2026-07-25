@@ -53,6 +53,35 @@ def test_upload_txt_document_creates_chunks(client):
     assert doc_store.load(body["data"]["doc_id"]) is not None
 
 
+def test_upload_wav_audio_transcribes_via_faster_whisper(client):
+    """[2026-07-25 §D-777d8fd9] 음성(.wav) 업로드가 더 이상 422가 아니라 실제
+    faster-whisper(tiny 모델, 실오디오)로 전사되어 청크가 생성되는지 검증한다 —
+    SpeechToTextAdapter가 document_upload_service._ADAPTERS에 배선됐는지의 end-to-end
+    확인(단위 테스트인 tests/test_faster_whisper_engine.py와 별개로, 실제 업로드
+    경로 전체가 연결됐는지가 이 테스트의 목적)."""
+    import os
+
+    test_client, req_store, doc_store = client
+    fixture_path = os.path.join(os.path.dirname(__file__), "fixtures", "sample_speech_ko.wav")
+    with open(fixture_path, "rb") as f:
+        audio_bytes = f.read()
+
+    resp = test_client.post(
+        "/documents/upload",
+        files={"file": ("sample_speech_ko.wav", io.BytesIO(audio_bytes), "audio/wav")},
+        data={"actor": "tester"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["data"]["doc_filename"] == "sample_speech_ko.wav"
+    assert body["data"]["chunk_count"] >= 1
+    markdown = doc_store.load(body["data"]["doc_id"])
+    assert markdown is not None
+    assert markdown.strip()  # 실제 전사 텍스트가 비어있지 않음
+
+
 def test_upload_pdf_persists_original_bytes(client, tmp_path):
     """[2026-07-25 §8 갭 해소, directive D-d65a28f2] PDF 업로드 시 원본 바이트가
     documents_api._original_pdf_path()가 가리키는 위치에 그대로 저장되는지 검증한다 —

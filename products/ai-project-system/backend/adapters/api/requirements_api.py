@@ -25,6 +25,7 @@ from backend.adapters.api.auth import require_api_key
 from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.doc_type_registry import DocTypeRegistry
 from backend.adapters.persistence.document_store import DocumentStore
+from backend.adapters.persistence.project_config_store import ProjectConfigStore
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.adapters.persistence.requirement_store import RequirementRecord, RequirementStore
 from backend.adapters.persistence.task_store import TaskStore
@@ -33,6 +34,7 @@ from backend.domain.entities.task import InvalidDomainCodeError, Task
 from backend.domain.graph.entities import Node, NodeKind
 from backend.domain.requirements.classifier import ClassificationResult
 from backend.domain.requirements.codes import DOMAIN_CODES, LAYER_CODES, REQUIREMENT_TYPES
+from backend.domain.requirements.design_gate import evaluate_design_draft_gate
 
 router = APIRouter(prefix="/requirements", tags=["requirements"], dependencies=[Depends(require_api_key)])
 
@@ -100,6 +102,14 @@ def get_requirement_store(project_id: str = DEFAULT_PROJECT_ID) -> RequirementSt
     return RequirementStore(project_scope.resolve_project_data_dir(project_id) / "requirements_store.json")
 
 
+def get_project_config_store_for_gate(project_id: str = DEFAULT_PROJECT_ID) -> ProjectConfigStore:
+    """[2026-07-25 §8-9 D-24d7a5fd] `list_requirements()`가 STEP6 시안게이트 판정에 필요한
+    `project_design_draft_confirmed`를 읽기 위한 팩토리 — `get_requirement_store()`와 동일
+    패턴(project_scope 재사용, CRZ). 별도 팩토리로 분리해 테스트에서 monkeypatch 가능하게
+    한다(`get_requirement_store`/`get_document_store`와 같은 격리 관례, T53 VIP 회귀수정)."""
+    return ProjectConfigStore(project_scope.resolve_project_data_dir(project_id) / "project_config.json")
+
+
 def _get_task_store_for_generation(project_id: str) -> TaskStore:
     """[2026-07-23 신규] `tasks_api.get_task_store()`와 동일한 경로 결정(project_scope
     재사용, CRZ — 새 경로규칙 발명 없음)을 이 파일에서 독립적으로 구성한다. tasks_api가
@@ -163,6 +173,9 @@ def list_requirements(project_id: str = Query(DEFAULT_PROJECT_ID)):
     재확인, CRZ). 기존 필드는 그대로, `assigned_agent_command`/`work_status`만 신규
     추가(§10-4 그대로)."""
     store = get_requirement_store(project_id)
+    config_store = get_project_config_store_for_gate(project_id)
+    config = config_store.load()
+    project_confirmed = bool(config and config.project_design_draft_confirmed)
     records = [
         {
             "req_id": r.req_id,
@@ -177,6 +190,9 @@ def list_requirements(project_id: str = Query(DEFAULT_PROJECT_ID)):
             "source_ref": r.source_ref,
             "assigned_agent_command": r.assigned_agent_command,
             "work_status": r.work_status,
+            "design_gate_status": evaluate_design_draft_gate(
+                r.design_draft_gate, r.design_draft_gate_override, project_confirmed
+            ),
         }
         for r in store.list_all()
     ]

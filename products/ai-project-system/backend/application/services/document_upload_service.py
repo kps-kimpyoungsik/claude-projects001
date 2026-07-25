@@ -33,6 +33,10 @@ from backend.adapters.parsers.hwp_adapter import HwpParserAdapter
 from backend.adapters.parsers.pdf_adapter import PdfParserAdapter
 from backend.adapters.parsers.pptx_adapter import PptxParserAdapter
 from backend.adapters.parsers.router import FORMAT_STRATEGY
+from backend.adapters.parsers.speech_to_text_adapter import (
+    SUPPORTED_AUDIO_EXTENSIONS,
+    SpeechToTextAdapter,
+)
 from backend.adapters.parsers.text_passthrough_adapter import TextPassthroughAdapter
 from backend.adapters.parsers.xlsx_adapter import XlsxParserAdapter
 from backend.adapters.persistence.document_store import DocumentStore
@@ -61,6 +65,22 @@ def _build_chunking_splitter() -> SemanticBoundarySplitter | None:
         return None  # Ollama 미기동 — SPCEngine 기본값(HeadingBoundarySplitter)으로 폴백
     return SemanticBoundarySplitter(judge=OllamaSemanticJudge())
 
+
+# [2026-07-25 §D-777d8fd9] faster-whisper 모델은 지연 로딩한다 — 모듈 임포트 시점(서버
+# 기동 시)에 즉시 WhisperModel을 로드하면 오디오를 한 번도 업로드하지 않는 세션에서도
+# 매번 시작 지연 + 메모리 상주가 생긴다(T38 PAP 성능 적응형 판단). 실제 첫 오디오 업로드
+# 시점에만 1회 빌드하고 이후 재사용한다.
+_stt_engine_cache: dict[str, object] = {}
+
+
+def _lazy_faster_whisper_engine(source_path: str):
+    if "engine" not in _stt_engine_cache:
+        from backend.adapters.parsers.faster_whisper_engine import build_faster_whisper_stt_engine
+
+        _stt_engine_cache["engine"] = build_faster_whisper_stt_engine()
+    return _stt_engine_cache["engine"](source_path)
+
+
 # 실제 동작하는 ParserPort 구현체만 등록한다 — 새 포맷 어댑터가 완성되면 이 리스트에
 # 추가하는 것이 유일한 확장 지점이다(§4 설계 명시).
 _ADAPTERS: list[ParserPort] = [
@@ -70,6 +90,7 @@ _ADAPTERS: list[ParserPort] = [
     PdfParserAdapter(),  # 2026-07-22 추가 — pdfplumber(신규 설치) 실동작 구현
     XlsxParserAdapter(),  # 2026-07-22 추가 — openpyxl(기설치) 실동작 구현
     HwpParserAdapter(),  # 2026-07-22 추가 — pyhwp(신규 설치) 재사용, 사용자 결정: "olefile+커스텀 파싱"
+    SpeechToTextAdapter(stt_engine=_lazy_faster_whisper_engine),  # 2026-07-25 추가 — faster-whisper(기설치) 지연연결
 ]
 
 
@@ -167,7 +188,18 @@ def process_uploaded_file(
         adapter = _pick_adapter(original_ext)
         parse_source = content
 
-    markdown = adapter.parse_to_markdown(io.BytesIO(parse_source), metadata={"filename": filename})
+    # [2026-07-25 §D-777d8fd9] SpeechToTextAdapter는 스트림이 아니라 metadata["source_path"]
+    # (디스크 경로)를 요구한다(faster-whisper가 ffmpeg 디코딩에 실 경로가 필요, 어댑터
+    # docstring §2 참고) — 오디오 확장자일 때만 임시 파일로 써서 전달, 전사 완료 후 정리.
+    if original_ext.lower() in SUPPORTED_AUDIO_EXTENSIONS:
+        with tempfile.TemporaryDirectory() as audio_tmp_dir:
+            audio_path = Path(audio_tmp_dir) / f"upload{original_ext}"
+            audio_path.write_bytes(parse_source)
+            markdown = adapter.parse_to_markdown(
+                io.BytesIO(parse_source), metadata={"filename": filename, "source_path": str(audio_path)}
+            )
+    else:
+        markdown = adapter.parse_to_markdown(io.BytesIO(parse_source), metadata={"filename": filename})
     if not markdown.strip():
         raise ValueError("파싱 결과가 비어 있습니다 — 문서 내용을 확인하세요")
 

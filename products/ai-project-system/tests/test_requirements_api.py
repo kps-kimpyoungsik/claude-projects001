@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from backend.adapters.api import requirements_api
 from backend.adapters.persistence.document_store import DocumentStore
+from backend.adapters.persistence.project_config_store import ProjectConfigStore
 from backend.adapters.persistence.requirement_store import RequirementStore
 from backend.adapters.persistence.task_store import TaskStore
 from backend.domain.requirements.classifier import classify_chunk
@@ -37,6 +38,9 @@ def client(tmp_path, monkeypatch):
     # 오염시켜 다른 테스트(e2e 등)가 그 잔재를 읽고 오판정한다(tests/test_e2e_task_lifecycle.py
     # 회귀 사례와 동일 근본원인 — plans/_plan/UPGRADE_PLAN_2026-07-24_5agent.md 2026-07-25 기록 참조).
     monkeypatch.setattr(requirements_api, "_graph_path", lambda *a, **k: graph_path)
+
+    config_store = ProjectConfigStore(tmp_path / "project_config.json")
+    monkeypatch.setattr(requirements_api, "get_project_config_store_for_gate", lambda *a, **k: config_store)
 
     return TestClient(app), req_store, doc_store
 
@@ -242,6 +246,51 @@ def test_get_requirement_unknown_id_returns_4xx(client):
     res = http.get("/requirements/REQ-QA-SEC-999")
     assert res.status_code == 404
     assert res.json()["error"]["code"] == "AEGIS-NOTFOUND"
+
+
+def test_list_requirements_design_gate_status_pass_by_default(client):
+    http, req_store, doc_store = client
+    _make_record(req_store, doc_store)
+    res = http.get("/requirements")
+    assert res.json()["data"]["requirements"][0]["design_gate_status"] == "PASS"
+
+
+def test_list_requirements_design_gate_status_block_mandatory(client):
+    http, req_store, doc_store = client
+    record = _make_record(req_store, doc_store)
+    req_store.set_design_draft_gate(record.req_id, "MANDATORY", actor="tester")
+
+    res = http.get("/requirements")
+    assert res.json()["data"]["requirements"][0]["design_gate_status"] == "BLOCK_MANDATORY"
+
+
+def test_list_requirements_design_gate_status_warn_strategic(client):
+    http, req_store, doc_store = client
+    record = _make_record(req_store, doc_store)
+    req_store.set_design_draft_gate(record.req_id, "STRATEGIC_MANDATORY", actor="tester")
+
+    res = http.get("/requirements")
+    assert res.json()["data"]["requirements"][0]["design_gate_status"] == "WARN_STRATEGIC"
+
+
+def test_list_requirements_design_gate_passes_when_project_confirmed(client):
+    from backend.adapters.persistence.project_config_store import ProjectConfig
+
+    http, req_store, doc_store = client
+    record = _make_record(req_store, doc_store)
+    req_store.set_design_draft_gate(record.req_id, "MANDATORY", actor="tester")
+
+    config_store = requirements_api.get_project_config_store_for_gate()
+    config_store.save(
+        ProjectConfig(
+            project_name="x", goal="y", selected_areas=["WEB"],
+            project_design_draft_confirmed=True,
+        ),
+        created_by="tester",
+    )
+
+    res = http.get("/requirements")
+    assert res.json()["data"]["requirements"][0]["design_gate_status"] == "PASS"
 
 
 def test_preview_missing_contains_pii_field_defaults_to_no_gate(client):
