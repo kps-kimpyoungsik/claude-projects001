@@ -16,19 +16,45 @@ monkeypatch 테스트 격리(§DRL 패턴)를 그대로 따르기 위해 `requir
 """
 
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from backend.adapters.api import requirements_api
+from backend.adapters.persistence import project_scope
+from backend.adapters.persistence.document_store import InvalidDocIdError, _validate_doc_id
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.application.services.document_upload_service import (
     NotImplementedUploadFormatError,
     UnsupportedUploadFormatError,
     process_uploaded_file,
 )
+from backend.application.services.page_render_service import render_page
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+# [Phase 2 §8-4, W3] 원본 PDF 바이트 보관 위치. `upload_document()`가 PDF 업로드 시점에
+# 이 경로로 원본을 저장한다(2026-07-25 directive D-d65a28f2 해소 — 이전엔 마크다운만
+# 저장돼 페이지 이미지 렌더링이 실사용 문서에 동작하지 않는 갭이 있었음). `DocumentStore`
+# (마크다운 전용, `documents/`)와 이름·역할을 분리하기 위해 `documents_raw/`라는 새
+# 하위 폴더명을 쓴다(기존 `documents/` 재사용 시 `{doc_id}.md`/`{doc_id}.pdf`가 같은
+# 디렉터리에 섞여 혼동을 유발하므로 CRZ상 오히려 분리가 맞다).
+_RAW_DOCUMENTS_SUBDIR = "documents_raw"
+
+
+def _original_pdf_path(doc_id: str, project_id: str) -> Path:
+    """`doc_id`에 대응하는 원본 PDF 파일의 예상 경로. `DocumentStore`와 동일한 doc_id
+    안전성 검증(`_validate_doc_id`, CWE-22 경로 순회 방지)을 재사용한다(CRZ, 신규 검증
+    로직 발명 없음)."""
+    _validate_doc_id(doc_id)
+    return project_scope.resolve_project_data_dir(project_id) / _RAW_DOCUMENTS_SUBDIR / f"{doc_id}.pdf"
+
+
+def _page_image_cache_dir(doc_id: str, project_id: str) -> Path:
+    """§8-3 캐시 위치: `data/page_images/{doc_id}/` (프로젝트별 격리는 기존 `project_scope`
+    규칙 그대로 재사용)."""
+    return project_scope.resolve_project_data_dir(project_id) / "page_images" / doc_id
 
 
 @router.post("/upload")
@@ -67,6 +93,16 @@ async def upload_document(
         return JSONResponse(status_code=422, content=requirements_api.error_envelope("AEGIS-VALIDATION", str(exc)))
     except ValueError as exc:
         return JSONResponse(status_code=422, content=requirements_api.error_envelope("AEGIS-VALIDATION", str(exc)))
+
+    # [2026-07-25 §8 갭 해소, directive D-d65a28f2 + W4 확장] result.pdf_bytes_for_page_render는
+    # 원본이 PDF였거나(그대로) DOCX/PPTX가 LibreOffice로 PDF 변환에 성공한 경우(§8 W4)에만
+    # 채워진다 — 원본 확장자가 아니라 이 필드 존재 여부로 저장 여부를 결정한다(변환된 PDF도
+    # 페이지 이미지 렌더링이 동작해야 하므로). None이면(변환 실패/미해당 포맷) 저장하지
+    # 않는다(그 경우 page_number/bbox도 None이라 §8-6 폴백으로 텍스트 하이라이트만 쓰임).
+    if result.pdf_bytes_for_page_render is not None:
+        raw_path = _original_pdf_path(result.doc_id, project_id)
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw_path.write_bytes(result.pdf_bytes_for_page_render)
 
     # [2026-07-25 고도화] 업로드로 채번된 Requirement들도 수동 등록 경로(requirements_api.
     # create_requirement_manual)와 동일하게 그래프 동기화한다(CRZ — sync_requirement_to_graph
@@ -146,3 +182,54 @@ def chunk_map(
             "chunks": chunks,
         },
     )
+
+
+@router.get("/{doc_id}/page/{page_number}")
+def page_image(
+    doc_id: str,
+    page_number: int,
+    actor: str = Query(...),
+    confirm_pii: bool = Query(False),
+    project_id: str = Query(DEFAULT_PROJECT_ID),
+):
+    """[Phase 2 §8-4, W3] `doc_id` 원본 PDF의 `page_number`(1-based) 페이지를 PNG로
+    렌더링해 서빙한다. `documents_api.chunk_map()`과 동일한 envelope·에러코드·PII 게이트
+    패턴을 그대로 재사용한다(CRZ — 신규 게이트 로직 발명 없음)."""
+    try:
+        pdf_path = _original_pdf_path(doc_id, project_id)
+    except InvalidDocIdError:
+        return JSONResponse(
+            status_code=404,
+            content=requirements_api.error_envelope("AEGIS-NOTFOUND", f"존재하지 않는 doc_id: {doc_id}"),
+        )
+
+    if not pdf_path.exists() or pdf_path.suffix.lower() != ".pdf":
+        return JSONResponse(
+            status_code=404,
+            content=requirements_api.error_envelope(
+                "AEGIS-NOTFOUND",
+                f"'{doc_id}'에 대한 PDF 원본을 찾을 수 없습니다(페이지 이미지 렌더링은 PDF만 지원)",
+            ),
+        )
+
+    req_store = requirements_api.get_requirement_store(project_id)
+    # §2-4/§6-1과 동일한 문서 단위 PII 게이트(chunk_map()과 동일 패턴, CRZ) — 이 문서에서
+    # 나온 REQ 중 하나라도 PII로 판정되면 페이지 이미지도 가린다(원문 텍스트보다 이미지가
+    # 더 민감할 수 있다는 §8-8 실측 경고를 그대로 반영).
+    records = [r for r in req_store.list_all() if r.doc_id == doc_id]
+    any_pii = any(getattr(r, "contains_pii", False) for r in records)
+    if any_pii and not confirm_pii:
+        return requirements_api.envelope(
+            ok=True, data={"doc_id": doc_id, "page_number": page_number, "requires_pii_confirmation": True}
+        )
+
+    if any_pii and confirm_pii:
+        requirements_api._append_preview_access_log(f"doc::{doc_id}::page::{page_number}", actor, project_id)
+
+    cache_dir = _page_image_cache_dir(doc_id, project_id)
+    try:
+        image_path = render_page(pdf_path, page_number, cache_dir)
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content=requirements_api.error_envelope("AEGIS-VALIDATION", str(exc)))
+
+    return FileResponse(image_path, media_type="image/png")

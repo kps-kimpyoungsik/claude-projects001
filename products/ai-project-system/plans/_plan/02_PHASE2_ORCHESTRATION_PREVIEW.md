@@ -8,7 +8,26 @@ status: 게이트 2 PASS — **§1(위치추적)·미리보기 화면 뼈대 구
 동일 envelope·락 패턴) + `requirements.html`에 "재청킹 요청" 버튼 추가(셸 구조 무변경, 사유
 prompt 입력 + suggested_char_start/end 파라미터 전달). 테스트 5건 추가, 전체 138 pass(§10
 구현분 포함), uvicorn 실기동 curl 스모크 확인(rechunk 성공/사유누락 422/queue append 확인).
-updated: 2026-07-20
+**§8 신규 설계 추가(2026-07-25, 구현 미착수)**: 좌표(bbox) 기반 페이지 이미지 시각화
+오버레이 — `/aegis-oneshot-plan`으로 AskUserQuestion 확정(텍스트 배경블록 근사 기각, 실제
+좌표+페이지 렌더링 선택) 후 PyMuPDF(기 설치) 단일 파이프라인 + LibreOffice 변환 브리지
+아키텍처로 설계. **실측: 이 개발환경에 LibreOffice 미설치**(W4 착수 전 설치 필요, 사용자
+승인 대기) — W1(PDF 뼈대)·W0(문장 하이라이트 배경→글자색 CSS 1줄)·W6(데이터필드 확장)은
+LibreOffice 없이도 착수 가능. 코드 구현은 전부 미착수(설계만, 사용자 지시대로).
+**전체 구현 완료(2026-07-25 후속 턴)**: W0·W1·W2·W3·W5·W6 병렬/직접 구현 완료(pytest
+319 passed) + 원본 PDF 미저장 갭 해소(directive D-d65a28f2, `documents_raw/{doc_id}.pdf`
+저장 배선, 321 passed) + **W4 LibreOffice 변환 브리지 완료**(평식 승인 → `winget install
+TheDocumentFoundation.LibreOffice` → `backend/adapters/office_convert/libreoffice_bridge.py`
++ 실제 DOCX→PDF 변환 통합테스트로 검증, 324 passed). **DOCX/PPTX 라우팅 배선 완료(2026-07-25, 같은 턴 후속)**: `document_upload_service.
+process_uploaded_file()`이 .docx/.pptx 업로드 시 LibreOffice로 PDF 변환을 먼저 시도하고
+(성공 시 마크다운도 변환된 PDF에서 재추출 — char_start/char_end와 bbox가 항상 같은
+텍스트 소스를 쓰게 해 오프셋 불일치 위험 원천 차단), 변환 실패는 네이티브 어댑터로 조용히
+폴백(업로드 자체는 절대 안 막음). `documents_api.upload_document()`도 원본 확장자가
+아니라 `UploadResult.pdf_bytes_for_page_render` 존재 여부로 `documents_raw/{doc_id}.pdf`
+저장을 결정하도록 수정. **실통합 테스트로 검증**(mock 아님 — 실제 DOCX 생성→실제
+LibreOffice 변환→실제 요구사항 채번→page_number/bbox 필드 실제로 채워짐까지 확인),
+전체 회귀 325 passed. §8 설계~구현 전 과정 완결.
+updated: 2026-07-25
 ---
 
 # 2차 설계 — 위치추적 미리보기 + 병렬 오케스트레이션
@@ -315,3 +334,132 @@ GET /requirements?doc_id={doc_id} → 그 문서에서 나온 RequirementRecord 
 
 **게이트 2-B 결론**: **PASS(조건부)** — §6-3 진입점 선택만 사용자 확인 후 확정, 나머지는
 기존 게이트 2 통과 자산 위의 순수 확장이라 재검토 불필요.
+
+## §8. 좌표 기반 페이지 이미지 시각화 오버레이 (2026-07-25 신규 설계, 구현 미착수)
+
+> **AskUserQuestion 확정 사항(2026-07-25)**: ①영역 표시=실제 좌표(bbox) 기반 이미지 오버레이
+> (텍스트 배경블록 아님) ②이미지출처=실제 페이지를 이미지로 렌더링(다운로드 링크 아님)
+> ③문장 하이라이트=배경색(mark.hit) 대신 글자색(font-color) 방식으로 교체 ④범위=신규 인프라
+> 포함 전체 요구사항 **설계까지만** 이번 턴 진행, 구현은 별도 승인 후.
+
+### §8-1. 문제 — 현재 한계(§1·§2 대비)
+
+§1·§2가 구현한 위치추적은 **평면 텍스트 오프셋**(`char_start`/`char_end`) 기반이다 — 이는
+문서를 markdown 유사 텍스트로 평탄화한 뒤의 좌표라, **원본 문서의 시각적 레이아웃(페이지·
+좌표·이미지)과는 무관**하다. 그 결과:
+- "영역을 사각형으로 표시" — 평탄화된 텍스트에는애초에 x/y 좌표가 없어 불가능(현재는 배경색
+  블록으로만 근사 가능, §8-0의 사용자 선택으로 이 근사는 기각됨).
+- "이미지 출처 페이지 미리보기" — `RequirementRecord`에 `page_number`/이미지 자체가 없다
+  (`source_is_image=True`인 문서는 `preview.html:287`에서 "미구현" 경고만 표시하고 종료).
+
+### §8-2. 아키텍처 결정 — PDF 통합 파이프라인(CRZ, 신규 인프라 최소화)
+
+**실측(2026-07-25)**: 이 프로젝트에는 이미 `pymupdf 1.28.0`이 설치돼 있으나 `pdf_adapter.py`는
+`pdfplumber`만 쓴다(`pdf2image`는 미설치). PyMuPDF는 텍스트+bbox 추출과 페이지 래스터화
+(`page.get_pixmap()`)를 **별도 시스템 의존성(poppler 등) 없이 단일 라이브러리로 동시 처리**
+할 수 있다 — 이것이 유일하게 신규 설치가 필요 없는 경로다.
+
+```
+[모든 문서 포맷] → (PDF 아니면) LibreOffice headless 변환 → 표준 PDF
+                                                              ↓
+                                          PyMuPDF 단일 파이프라인
+                                   (텍스트+bbox 추출 · 페이지→PNG 래스터화)
+                                                              ↓
+                                   RequirementRecord.page_number/bbox 채움
+                                   + data/page_images/{doc_id}/{page}.png 캐시
+```
+
+- **DOCX/PPTX**: python-docx/python-pptx는 페이지 레이아웃 개념이 없거나(docx) bbox는 있어도
+  래스터화 기능이 없다(pptx) — 별도 포맷별 렌더러를 만들지 않고(T57 PVS over-eng 회피) 표준
+  변환 도구(LibreOffice `soffice --headless --convert-to pdf`)로 PDF화한 뒤 **위 PDF 파이프라인
+  하나만 재사용**한다(CRZ — 렌더링 로직 1곳).
+- **HWP**: 기존 `hwp_adapter.py`가 이미 "검증 미확정" 상태(README 자인) — 이번 §8 범위에서
+  제외(뼈대 우선순위, §8-4). HWP→PDF 변환기(hwp5 등)가 붙으면 동일 파이프라인에 자연 편입.
+- **순수 텍스트/스캔이미지 문서**(TXT, 이미지형): 페이지 개념 자체가 없거나(txt) 이미 이미지
+  자체(스캔본)이므로 별도 경로(§8-5) — bbox 파이프라인과 충돌 없음.
+
+### §8-3. 데이터 모델 확장 (`RequirementRecord`, `backend/adapters/persistence/requirement_store.py`)
+
+| 신규 필드 | 타입 | 의미 |
+|---|---|---|
+| `page_number` | `int \| None` | 원본 문서 기준 1-based 페이지 번호(변환 후 PDF 기준) |
+| `bbox` | `list[float] \| None` | `[x0, y0, x1, y1]` — PDF 포인트 좌표계(PyMuPDF 기본 단위) |
+| `page_image_ready` | `bool` | 해당 페이지 이미지가 `data/page_images/`에 캐시됐는지(지연 렌더링 여부 판단) |
+
+**하위 호환**: 이 3필드는 전부 옵셔널(`None`/`False` 기본값) — 기존 레코드(§1·§2 생성분)는
+그대로 두고(재처리 강제 없음, CRZ), `preview.html`은 `bbox is None`이면 **기존 텍스트
+하이라이트로 폴백**한다(§8-6). 즉 신규 파이프라인 도입 전 이미 존재하는 요구사항은 깨지지
+않는다 — 점진 확장(T47 PFE).
+
+### §8-4. 백엔드 신규 컴포넌트
+
+| 컴포넌트 | 위치(신규) | 역할 |
+|---|---|---|
+| `backend/adapters/parsers/pdf_bbox_adapter.py` | 신규 | PyMuPDF로 텍스트+bbox+페이지 추출(기존 `pdf_adapter.py`의 `ParserPort` 구현은 유지 — 이 신규 어댑터가 char_start/end와 함께 bbox까지 채우는 **상위 확장판**, 기존 계약 위반 없음) |
+| `backend/adapters/office_convert/libreoffice_bridge.py` | 신규 | `soffice --headless --convert-to pdf` subprocess 래퍼(ENV-047 타임아웃 가드 패턴 재사용 — §0-5 Pre-Q 그대로 적용) |
+| `backend/application/services/page_render_service.py` | 신규 | `page_number` → PNG 렌더링(PyMuPDF `get_pixmap`) + `data/page_images/{doc_id}/` 캐시 |
+| `GET /documents/{doc_id}/page/{page_number}.png` | `documents_api.py`에 라우터 추가(기존 파일 확장, CRZ) | 캐시 hit면 즉시 서빙, miss면 `page_render_service` 호출 후 서빙 — PII 게이트는 기존 `documents_api`의 `confirm_pii` 파라미터·로그 패턴 그대로 재사용 |
+
+**뼈대 우선순위(§3-A 원칙 적용)**: PDF 경로(§8-2 하단 절반)가 **뼈대** — DOCX/PPTX는 이
+뼈대에 "LibreOffice 변환"이라는 전처리 1단계만 얹는 **의존 관계**이지 별도 구현이 아니다.
+즉 작업 순서는 반드시 PDF 파이프라인 완성 → 변환 브리지 연결 순이며, 거꾸로(변환 브리지부터)
+진행하면 재작업이 발생한다.
+
+### §8-5. 프론트엔드 신규 컴포넌트 (`preview.html` 확장)
+
+- **모드 토글**: 기존 텍스트 뷰(`#doc-view`)는 유지하고, `bbox`가 있는 레코드를 선택하면
+  **이미지 오버레이 모드**로 자동 전환(사용자가 매번 수동 토글하지 않아도 되게 — 레코드
+  유무로 자동 판단, §8-3 폴백 원칙과 대칭).
+- **렌더링 구조**: `<div class="page-frame">` 안에 `<img src=".../page/{n}.png">` + 절대위치
+  `<div class="bbox-overlay">`(bbox를 이미지 렌더 크기에 맞춰 %로 환산해 `left/top/width/height`
+  지정, 반투명 배경 `background: color-mix(in srgb, var(--color-brand-primary) 25%, transparent)`)
+  — Canvas가 아니라 **absolute-positioned div**를 쓰는 이유: 기존 `mark.hit`류 DOM 오버레이
+  패턴과 기술 스택 일관성 유지(CRZ, 신규 렌더링 기술 도입 최소화 — Canvas는 클릭 이벤트·접근성
+  처리가 더 필요해 이 규모에는 과함, T57 PVS).
+- **이미지 출처 페이지**: `source_is_image=True`인 레코드는 `page_number`만 있으면(bbox 없어도)
+  페이지 이미지 자체를 표시(현재 `preview.html:287`의 "미구현" 경고를 대체) — bbox는 없지만
+  페이지 렌더링 인프라(§8-4)는 동일하게 재사용.
+- **문장 하이라이트 방식 변경(확정 사항 ③, 별도 저위험 작업)**: `mark.hit { background: ... }`
+  →`mark.hit { background: none; color: var(--color-brand-primary); font-weight: 700; }`로
+  1줄 CSS 교체 — bbox 파이프라인과 **완전히 독립**이라 먼저 착수 가능(D1, `components.css`
+  또는 `preview.html` 인라인 스타일 1곳만 수정).
+
+### §8-6. 폴백·마이그레이션 원칙
+
+- `bbox is None` → 기존 텍스트 하이라이트 뷰 그대로(§8-3 하위호환).
+- `source_is_image=True` and `page_number is None` → 현재의 "미구현" 경고 문구 유지(이 경우만
+  진짜 미지원 — 스캔 이미지 자체의 OCR 없이는 bbox도 페이지도 만들 수 없음).
+- 기존 요구사항을 일괄 재처리(re-chunk)해 bbox를 소급 채우는 것은 **이번 §8 범위 밖**(별도
+  배치 작업, 대량 재생성 성격이라 T100 §3 절대하한 — 평식 승인 필요).
+
+### §8-7. 작업 단위 전략 분해 (Stage 5 — /aegis-oneshot-plan 요청사항)
+
+| WORK | 분야(Domain) | 역할(R) | 복잡도 | 기술 | 영역(Scope) | 의존 |
+|---|---|---|---|---|---|---|
+| **W0. 문장 하이라이트 배경→글자색 전환** | frontend | R2 구현 | SIMPLE(D1) | CSS | `preview.html`(`mark.hit` 스타일 1곳) | 없음 — 즉시 착수 가능 |
+| **W1. PDF bbox+페이지 추출 어댑터** | backend/parser | R3설계→R2구현→R5검증 | COMPLEX(D3~4) | Python/PyMuPDF | `backend/adapters/parsers/pdf_bbox_adapter.py`(신규), `requirement_extraction_service.py`(bbox 필드 배선) | **뼈대** — 아래 전부가 의존 |
+| **W2. 페이지 PNG 렌더+캐시 서비스** | backend/service | R2구현→R5검증 | MEDIUM(D3) | Python/PyMuPDF | `page_render_service.py`(신규) | W1 |
+| **W3. 페이지 이미지 서빙 엔드포인트** | backend/api | R2구현 | SIMPLE(D2) | FastAPI | `documents_api.py`(라우터 추가) | W2 |
+| **W4. LibreOffice 변환 브리지** | backend/adapter | R3설계→R2구현→R5검증(타임아웃 실측 필수, §0-5 Pre-Q) | COMPLEX(D3~4) | subprocess/LibreOffice | `libreoffice_bridge.py`(신규) | W1(변환 결과가 W1 파이프라인으로 들어감) |
+| **W5. 프론트 이미지 오버레이 모드** | frontend | R3설계→R2구현→R5검증(다관점: 반응형 %환산 정확도) | COMPLEX(D3) | JS/CSS | `preview.html`(모드 토글+오버레이 렌더) | W1+W3 |
+| **W6. RequirementRecord 필드 확장** | backend/domain | R2구현 | SIMPLE(D1~2) | Python dataclass | `requirement_store.py`(3필드 추가, 옵셔널 기본값) | 없음 — W1보다 먼저 또는 동시 가능 |
+
+**§PCM 분류**: W0·W6은 서로 CLEAR(다른 파일) — 즉시 병렬/순차 무관 착수 가능(D1~2, 승인
+없이도 진행 가능한 범위로 판단되나 사용자가 "설계까지만" 명시했으므로 이번 턴엔 착수 안 함).
+W1(뼈대)→{W2→W3, W4}→W5 순서 강제(의존관계, §3-A 뼈대 우선순위) — W2/W4는 W1 완료 후 병렬
+가능(서로 다른 파일, CLEAR).
+
+### §8-8. 품질검토 — MPCR 7관점 (착수 전 예비 검토, §4·§7과 동일 패턴)
+
+| 관점 | 검토 결과 |
+|---|---|
+| 개발 | PyMuPDF가 이미 설치돼 있어 신규 의존성은 LibreOffice(시스템 바이너리)뿐 — **실측 확인(2026-07-25): 이 개발 환경에 LibreOffice 미설치**(`where soffice` 실패, 기본 설치 경로 부재). W1(PDF 뼈대)은 이 설치와 무관하게 착수 가능하나, **W4(DOCX/PPTX 변환 브리지)는 LibreOffice 설치가 선결조건** — 신규 소프트웨어 설치는 코드 변경이 아니라 환경 변경이므로 착수 전 사용자 승인 필요(설치 자체는 비가역은 아니나 개발 환경 구성 변경) |
+| 설계 | PDF를 뼈대로 삼아 DOCX/PPTX를 "변환 후 재사용"하는 구조는 포맷별 파서 3개를 만드는 것보다 유지보수 단일화(CRZ) |
+| 운영 | 페이지 이미지 캐시(`data/page_images/`)가 무한 증가할 수 있음 — T84 IBP 백업 정책·용량 정리 정책은 이번 설계 범위 밖(후속 갭으로 정직 표기) |
+| 정보안정성 | 페이지 이미지 서빙도 §2-4 PII 게이트를 그대로 통과해야 함(§8-4에 명시) — 원문 텍스트보다 이미지가 오히려 더 민감할 수 있어(스캔본에 개인정보 그대로 노출) 게이트 우회 절대 금지 |
+| 헌법정합 | 신규 필드 전부 옵셔널 기본값(§8-3) — 00_PROJECT_CONSTITUTION §4 드리프트 체크리스트("구조화된 요구사항 항목에 기여하는가") 충족, 청크 신뢰도 검증(원 목표 §3)의 직접 강화 |
+| 검증 | LibreOffice 변환 타임아웃(대용량 문서 hang 가능성, DES-027 계열 리스크)은 W4 구현 시 §0-5 Pre-Q 가드 필수 적용 대상으로 미리 표시 |
+| 책임 | 폴백 원칙(§8-6)이 있어 W1~W5 중 일부만 완료돼도 기존 기능(§1·§2)이 회귀하지 않음 — 점진 배포 가능 |
+
+**게이트 결론**: **PASS(조건부)** — LibreOffice 설치 여부(개발환경 실측 필요)와 페이지이미지
+캐시 정리 정책(후속 갭)만 표기, 나머지는 기존 자산 재사용 원칙(CRZ)으로 설계 완결.

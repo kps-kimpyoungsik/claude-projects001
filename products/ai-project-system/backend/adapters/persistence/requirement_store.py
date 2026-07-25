@@ -105,6 +105,12 @@ class RequirementRecord:
     # LLM 판단으로 부착한 문서 내 관계. 각 항목은 to_chunk_id(대상 청크)·type·evidence(원문
     # 발췌, 출처)·confidence를 갖는다. judge 미가동 시 빈 리스트(과장 금지).
     related_chunks: list[dict] = field(default_factory=list)
+    # plans/_plan/02_PHASE2_ORCHESTRATION_PREVIEW.md §8 — 좌표(bbox) 기반 페이지 이미지 시각화.
+    # 전부 옵셔널 기본값(§8-3 하위호환) — 기존 레코드는 그대로 두고 preview.html이 bbox=None이면
+    # 텍스트 하이라이트로 자동 폴백한다(재처리 강제 없음, CRZ). bbox=[x0,y0,x1,y1] PDF 포인트 좌표.
+    page_number: int | None = None
+    bbox: list[float] | None = None
+    page_image_ready: bool = False
 
 
 class RequirementStore(RequirementStorePort):
@@ -145,6 +151,7 @@ class RequirementStore(RequirementStorePort):
         source_is_image: bool = False,
         related_chunks: list[dict] | None = None,
         extra_doc_types: set[str] | None = None,
+        page_number: int | None = None, bbox: list[float] | None = None,
     ) -> RequirementRecord | None:
         """분류 결과를 요구사항 항목으로 채번·저장한다.
 
@@ -154,6 +161,10 @@ class RequirementStore(RequirementStorePort):
         doc_id·heading_path·char_start·char_end는 §1-2 위치정보 — 미리보기 화면이 원문에서
         정확히 이 구간을 하이라이트할 수 있게 한다. source_is_image=True면
         image_analysis_status="not_implemented"로 정직 표기(과장 금지).
+
+        page_number/bbox는 §8-3 좌표 기반 시각화 오버레이 필드 — PDF 문서에서만
+        `pdf_bbox_adapter.locate()`로 채워지며(호출부: requirement_extraction_service.py),
+        그 외 문서 유형은 둘 다 None으로 남는다(§8-3 하위호환 그대로).
 
         contains_pii/pii_scan_matched는 §3 — description(요구사항 본문 요약)을
         pii_detector.scan_for_pii()로 스캔해 채운다. 원문 전체가 아니라 description을
@@ -197,6 +208,8 @@ class RequirementStore(RequirementStorePort):
             pii_scan_matched=pii_result.pii_scan_matched,
             related_chunks=related_chunks or [],
             doc_filename=f"{doc_id}.md" if doc_id else None,
+            page_number=page_number,
+            bbox=bbox,
         )
         data[req_id] = asdict(record)
         self._save_all(data)

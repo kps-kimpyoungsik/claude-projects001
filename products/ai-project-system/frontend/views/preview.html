@@ -30,9 +30,15 @@
   .breadcrumb .req-id { color: var(--brand-text); font-weight: 700; }
   .conf-line { font-size: 12px; margin-top: 4px; }
   .doc-view { flex: 1; overflow-y: auto; padding: 18px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
-  mark.hit { background: color-mix(in srgb, var(--warn) 35%, transparent); color: var(--text-primary); border-radius: 3px; padding: 1px 2px; }
+  /* [W0 2026-07-25] 배경색 하이라이트 -> 글자색 방식으로 교체(사용자 확정, /aegis-oneshot-plan §8) */
+  mark.hit { background: none; color: var(--color-brand-primary); font-weight: 700; border-radius: 0; padding: 0; }
   .empty-state { padding: 40px; font-size: 13px; }
   .img-warning { background: color-mix(in srgb, var(--warn) 15%, transparent); border: 1px solid var(--warn); color: var(--warn-text); border-radius: var(--border-radius-base); padding: 8px 12px; font-size: 12px; margin: 12px 18px 0; }
+
+  /* [W5 2026-07-25] §8 좌표기반 페이지 이미지 오버레이(/aegis-oneshot-plan §8 확정사항) */
+  .page-frame { position: relative; display: inline-block; margin: 18px; }
+  .page-frame img.page-img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border-color); }
+  .bbox-overlay { position: absolute; background: color-mix(in srgb, var(--color-brand-primary) 25%, transparent); border: 2px solid var(--color-brand-primary); pointer-events: none; }
 
   .actor-bar { margin-left: auto; }
   .actor-bar input { width: 110px; font-size: 12px; }
@@ -179,7 +185,17 @@ async function confirmPiiView() {
     console.warn(`PII 열람 접근 로그 기록 실패(계속 진행): ${e.message}`);
   }
   const record = ALL_RECORDS.find(r => r.req_id === reqId);
-  if (record) await renderDocHighlight(record);
+  if (record) await renderPreview(record);
+}
+
+// [W5 2026-07-25] bbox/page_number가 있으면 이미지 오버레이(§8), 없으면 기존 텍스트
+// 하이라이트로 자동 폴백(§8-6) — 매번 호출부에서 분기하지 않도록 단일 진입점으로 통합.
+async function renderPreview(record) {
+  if (record.bbox && record.page_number != null && record.doc_id) {
+    await renderPageOverlay(record);
+  } else {
+    await renderDocHighlight(record);
+  }
 }
 
 function cancelPiiView() {
@@ -249,6 +265,37 @@ async function fetchDoc(docId) {
   return text;
 }
 
+// [W5 2026-07-25] §8 좌표기반 페이지 이미지 오버레이 — record.bbox/page_number가 있으면
+// 이 함수로, 없으면(§8-6 폴백 원칙) 기존 renderDocHighlight()로 텍스트 하이라이트를 그린다.
+async function renderPageOverlay(record) {
+  const docView = document.getElementById("doc-view");
+  const url = `/documents/${encodeURIComponent(record.doc_id)}/page/${record.page_number}`
+    + `?actor=${encodeURIComponent(getActor())}&confirm_pii=true&project_id=${encodeURIComponent(getProjectId())}`;
+  docView.innerHTML = `<div class="page-frame"><img class="page-img" id="page-img" alt="문서 페이지 ${record.page_number}"></div>`;
+  const img = document.getElementById("page-img");
+
+  img.onload = () => {
+    // API가 PII 게이트 JSON을 이미지 대신 반환하면 <img>는 로드 실패(onerror)로 간다 —
+    // 여기 onload는 실제 PNG가 온 경우만 탄다(§2-4 게이트는 이미 selectRequirement에서
+    // 확인 완료된 상태이므로 이 시점엔 재확인 없이 confirm_pii=true로 직접 요청).
+    const frame = img.closest(".page-frame");
+    const [x0, y0, x1, y1] = record.bbox;
+    const overlay = document.createElement("div");
+    overlay.className = "bbox-overlay";
+    overlay.style.left = `${(x0 / img.naturalWidth) * 100}%`;
+    overlay.style.top = `${(y0 / img.naturalHeight) * 100}%`;
+    overlay.style.width = `${((x1 - x0) / img.naturalWidth) * 100}%`;
+    overlay.style.height = `${((y1 - y0) / img.naturalHeight) * 100}%`;
+    frame.appendChild(overlay);
+    frame.scrollIntoView({block: "center", behavior: "smooth"});
+  };
+  img.onerror = () => {
+    console.warn(`페이지 이미지 로드 실패(원본 PDF 미저장 등) — 텍스트 하이라이트로 폴백: ${url}`);
+    renderDocHighlight(record);
+  };
+  img.src = url;
+}
+
 async function renderDocHighlight(record) {
   const docView = document.getElementById("doc-view");
   try {
@@ -311,7 +358,7 @@ async function selectRequirement(reqId) {
     return;
   }
 
-  await renderDocHighlight(record);
+  await renderPreview(record);
 }
 
 async function init() {

@@ -19,7 +19,15 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import tempfile
+
 from backend.adapters.llm.ollama_semantic_judge import OLLAMA_URL, OllamaSemanticJudge
+from backend.adapters.office_convert.libreoffice_bridge import (
+    ConversionFailedError,
+    ConversionTimeoutError,
+    LibreOfficeNotFoundError,
+    convert_to_pdf,
+)
 from backend.adapters.parsers.docx_adapter import DocxParserAdapter
 from backend.adapters.parsers.hwp_adapter import HwpParserAdapter
 from backend.adapters.parsers.pdf_adapter import PdfParserAdapter
@@ -32,6 +40,12 @@ from backend.adapters.persistence.requirement_store import RequirementRecord, Re
 from backend.application.ports.parser_port import ParserPort
 from backend.application.services.requirement_extraction_service import extract_requirements_from_chunks
 from backend.domain.chunking.heading_splitter import SemanticBoundarySplitter, SPCEngine
+
+# plans/_plan/02_PHASE2_ORCHESTRATION_PREVIEW.md §8, W4 — DOCX/PPTX를 §8-2 PDF 통합
+# 파이프라인에 편입시키는 확장자 집합. 변환 성공 시 이 포맷들은 PdfParserAdapter로
+# 마크다운을 재추출하고 pdf_source도 함께 채운다(§8-6과 동일한 하위호환 원칙 —
+# 변환 실패 시 기존 네이티브 어댑터로 조용히 폴백, 업로드 자체는 절대 막지 않는다).
+_LIBREOFFICE_CONVERTIBLE_EXTS = {".docx", ".pptx"}
 
 # 2026-07-22 (사용자 지시: "LLM 연동해서 청킹 퀄리티를 끌어올려야 한다"): 업로드마다 Ollama에
 # 짧은 타임아웃으로 헬스체크 후 가용하면 SemanticBoundarySplitter(관계판단 포함), 불가하면
@@ -79,6 +93,11 @@ class UploadResult:
     chunk_count: int
     requirements_created: list[RequirementRecord] = field(default_factory=list)
     unclassified_chunk_count: int = 0
+    # [§8 W4] 원본이 PDF였거나 LibreOffice로 PDF 변환에 성공한 경우에만 채워진다 — 호출부
+    # (documents_api.upload_document)가 원본 확장자와 무관하게 이 바이트를 documents_raw/
+    # {doc_id}.pdf로 저장해 페이지 이미지 렌더링(§8-4)이 동작하게 한다. 변환 실패/미해당
+    # 포맷이면 None(§8-6 폴백 — page_number/bbox도 함께 None으로 남는다).
+    pdf_bytes_for_page_render: bytes | None = None
 
 
 def _pick_adapter(ext: str) -> ParserPort:
@@ -119,9 +138,36 @@ def process_uploaded_file(
         raise ValueError("빈 파일은 업로드할 수 없습니다")
 
     ext = Path(filename).suffix
-    adapter = _pick_adapter(ext)
+    original_ext = ext
 
-    markdown = adapter.parse_to_markdown(io.BytesIO(content), metadata={"filename": filename})
+    # [§8 W4] DOCX/PPTX는 LibreOffice로 PDF 변환을 먼저 시도해, 성공하면 §8-2 설계 그대로
+    # PDF 통합 파이프라인(PdfParserAdapter + pdf_bbox_adapter)에 편입시킨다 — 마크다운도
+    # 변환된 PDF에서 재추출해 char_start/char_end가 bbox 조회와 항상 같은 텍스트 소스를
+    # 쓰게 한다(서로 다른 추출엔진 간 오프셋 불일치 방지, DES 계열 실수 사전 차단). 변환
+    # 실패(LibreOffice 미설치/타임아웃/손상 파일)는 **업로드를 막지 않고** 기존 네이티브
+    # 어댑터(docx_adapter/pptx_adapter)로 조용히 폴백한다(T99 AIOS 우아한 성능저하 — Ollama
+    # 헬스체크 폴백과 동일 패턴, CRZ).
+    converted_pdf_bytes: bytes | None = None
+    if ext.lower() in _LIBREOFFICE_CONVERTIBLE_EXTS:
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_dir_path = Path(tmp_dir)
+                input_path = tmp_dir_path / f"upload{ext}"
+                input_path.write_bytes(content)
+                pdf_path = convert_to_pdf(input_path, tmp_dir_path)
+                converted_pdf_bytes = pdf_path.read_bytes()
+        except (LibreOfficeNotFoundError, ConversionTimeoutError, ConversionFailedError):
+            converted_pdf_bytes = None  # 폴백 — 네이티브 어댑터로 계속 진행
+
+    if converted_pdf_bytes is not None:
+        ext = ".pdf"
+        adapter = PdfParserAdapter()
+        parse_source = converted_pdf_bytes
+    else:
+        adapter = _pick_adapter(original_ext)
+        parse_source = content
+
+    markdown = adapter.parse_to_markdown(io.BytesIO(parse_source), metadata={"filename": filename})
     if not markdown.strip():
         raise ValueError("파싱 결과가 비어 있습니다 — 문서 내용을 확인하세요")
 
@@ -132,7 +178,13 @@ def process_uploaded_file(
     engine = SPCEngine(splitter=semantic_splitter) if semantic_splitter else SPCEngine()
     chunks = engine.process_document(markdown, context_label=filename, doc_id=doc_id)
 
-    records = extract_requirements_from_chunks(chunks, req_store, doc_format=ext)
+    # plans/_plan/02_PHASE2_ORCHESTRATION_PREVIEW.md §8 — PDF(원본이거나 위에서 변환됨)만
+    # 원본 바이트를 그대로 넘겨 pdf_bbox_adapter.locate()가 page_number/bbox를 채울 수 있게
+    # 한다(다른 포맷·변환실패는 None 유지, §8-3 하위호환).
+    pdf_source = parse_source if ext.lower() == ".pdf" else None
+    records = extract_requirements_from_chunks(
+        chunks, req_store, doc_format=ext, pdf_source=pdf_source
+    )
 
     child_chunk_count = sum(1 for c in chunks if c.parent_id is not None)
     unclassified = child_chunk_count - len(records)
@@ -143,4 +195,5 @@ def process_uploaded_file(
         chunk_count=child_chunk_count,
         requirements_created=records,
         unclassified_chunk_count=unclassified,
+        pdf_bytes_for_page_render=parse_source if ext.lower() == ".pdf" else None,
     )
