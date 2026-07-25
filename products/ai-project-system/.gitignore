@@ -22,3 +22,8 @@ backup/
 # boot_preflight.py 회로차단기 실패이력(런타임 상태, 코드 아님)
 .boot_preflight_failures.json
 server.error.log
+
+# [2026-07-25] AEGIS 인수인계 스테이징(T64 KAAG 폴백 경로) — 이 제품 코드가 아니라
+# AEGIS 루트(D:\aegis) graphify 블록 등재를 위한 임시 스테이징 파일. directive
+# D-278c8ad7로 이미 cross-LLM 게시판에 이력 보존됨 — 이 저장소에 중복 커밋 불필요.
+.aegis-staging/

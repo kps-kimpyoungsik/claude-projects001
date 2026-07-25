@@ -11,6 +11,7 @@
  */
 (function () {
   var THEME_KEY = "aegis_theme";
+  var LNB_COLLAPSE_KEY = "aegis_lnb_collapsed";
 
   /*
    * [2026-07-22 색상 조화 검증] 페이지 자체(<html>)의 data-theme을 셸 로드보다 먼저
@@ -34,6 +35,18 @@
       localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
       applyStoredTheme();
       btn.textContent = isDark ? "☀️" : "🌙";
+    });
+  }
+
+  function initLnbCollapse(lnb) {
+    var btn = lnb.querySelector("#ai-lnb-toggle-btn");
+    if (!btn) return;
+    var collapsed = localStorage.getItem(LNB_COLLAPSE_KEY) === "1";
+    if (collapsed) lnb.classList.add("collapsed");
+    btn.addEventListener("click", function () {
+      collapsed = !collapsed;
+      lnb.classList.toggle("collapsed", collapsed);
+      localStorage.setItem(LNB_COLLAPSE_KEY, collapsed ? "1" : "0");
     });
   }
 
@@ -87,6 +100,7 @@
 
         initProjectSwitcher(gnb);
         initThemeToggle(gnb);
+        initLnbCollapse(lnb);
       })
       .catch(function (e) {
         fallbackShell(gnbSlot, lnbSlot, e.message);

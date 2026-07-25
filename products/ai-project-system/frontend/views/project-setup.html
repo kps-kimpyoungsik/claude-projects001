@@ -24,8 +24,17 @@
   .step-title { font-size: 13px; font-weight: 600; }
   .step-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 
-  .content { flex: 1; overflow-y: auto; padding: 28px 36px; }
-  .panel { display: none; max-width: 640px; }
+  .content { flex: 1; overflow-y: auto; padding: 28px 36px; min-width: 0; }
+  @media (max-width: 860px) {
+    .sidebar { width: 150px; padding: 12px 6px; }
+    .step-sub { display: none; }
+    .content { padding: 18px 16px; }
+    .card-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  }
+  /* [2026-07-25 반응형] 고정 640px 캡이 STEP2 카드가 화면 폭과 무관하게 항상 2~3열로만
+     줄바꿈되던 근본원인이었다(실사용 피드백). 뷰포트에 비례해 넓어지되 초광폭 모니터에서
+     텍스트 줄 길이가 과도해지지 않도록 상한만 유지한다. */
+  .panel { display: none; max-width: min(1100px, 94%); }
   .panel.active { display: block; }
   h2 { font-size: 20px; margin: 0 0 4px; }
   .panel p.desc { color: var(--text-muted); font-size: 13px; margin: 0 0 20px; }
@@ -36,7 +45,10 @@
   .field textarea { min-height: 70px; resize: vertical; }
 
   /* workbase check-cards 벤치마킹 */
-  .card-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* [2026-07-25 반응형] flex-wrap은 카드 폭이 고정돼 화면 크기와 무관하게 항상 같은
+     줄 수로 줄바꿈됐다(사용자 실사용 피드백 — "2줄로 나옴"). auto-fill 그리드로 바꿔
+     뷰포트 폭에 맞춰 카드가 실제로 꽉 차게 재배열되도록 한다. */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
   .check-card { border: 1.5px solid rgba(128,128,128,.4); border-radius: var(--border-radius-base); padding: 8px 12px; cursor: pointer; font-size: 13px; font-weight: 600; position: relative; }
   .check-card:hover { border-color: var(--color-brand-primary); }
   .check-card.selected { border-color: var(--color-brand-primary); background: color-mix(in srgb, var(--color-brand-primary) 10%, transparent); color: var(--brand-text); }
@@ -65,6 +77,54 @@
   .summary-block dt:first-child { margin-top: 0; }
   .summary-block dd { margin: 2px 0 0; }
   .error-box { color: var(--danger-text); font-size: 13px; margin-top: 10px; }
+
+  /* [W2 2026-07-25 §8-8] 설명박스·타이틀 가시성 개선 */
+  .info-box { background: color-mix(in srgb, var(--color-brand-primary) 8%, transparent);
+    border-left: 3px solid var(--color-brand-primary); border-radius: var(--border-radius-base);
+    padding: 12px 14px; font-size: 13px; margin-bottom: 20px; line-height: 1.6; color: var(--text-primary); }
+  .panel h2 { font-size: 22px; font-weight: 800; padding-bottom: 8px;
+    border-bottom: 2px solid var(--color-brand-primary); margin-bottom: 4px; }
+  .check-card .card-label { font-weight: 700; }
+  .check-card .card-desc { display: block; font-size: 11px; font-weight: 400; color: var(--text-muted); margin-top: 3px; max-width: 220px; white-space: normal; line-height: 1.4; }
+  .glossary-link { font-size: 11px; margin-left: 6px; text-decoration: none; color: var(--brand-text); white-space: nowrap; }
+  .subsection-title { font-size: 14px; font-weight: 700; margin: 22px 0 8px; }
+  .toggle-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .toggle-btn { border: 1.5px solid rgba(128,128,128,.4); border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer; background: transparent; color: var(--text-primary); }
+  .toggle-btn.on { border-color: var(--color-brand-primary); background: color-mix(in srgb, var(--color-brand-primary) 12%, transparent); color: var(--brand-text); }
+  .conditional-field { margin: 8px 0 14px 16px; padding: 10px 12px; border-left: 2px solid var(--border-color); }
+  .conditional-field label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .conditional-field select, .conditional-field input[type=text] { width: 100%; max-width: 320px; }
+  .warn-badge { display: inline-block; font-size: 10px; color: var(--warn-text); background: color-mix(in srgb, var(--warn) 15%, transparent); border: 1px solid var(--warn); border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
+
+  /* [W7 2026-07-25 §8-7-A] 아키텍처 요약 시각화 — 원형 게이지 + SVG 토폴로지 */
+  .arch-summary { display: flex; gap: 14px; flex-wrap: wrap; margin: 16px 0 20px; }
+  .arch-group { flex: 1 1 220px; min-width: 220px; border: 1px solid var(--border-color); border-top: 2px solid var(--color-brand-primary); border-radius: 10px; padding: 14px 16px; background: var(--bg-secondary); }
+  .arch-group h3 { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--brand-text); margin: 0 0 12px; }
+  .arch-group h3::before { content: "\203A\A0"; }
+  .arch-gauge-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .arch-gauge { --pct: 0; --ring: var(--color-brand-primary); width: 76px; height: 76px; border-radius: 50%; position: relative; flex-shrink: 0;
+    background: conic-gradient(var(--ring) calc(var(--pct) * 1%), var(--hover-tint) 0);
+    box-shadow: 0 0 0 1px var(--border-color), 0 0 14px color-mix(in srgb, var(--ring) 35%, transparent);
+    display: flex; align-items: center; justify-content: center; }
+  .arch-gauge::before { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--bg-secondary); }
+  .arch-gauge .pct { position: relative; z-index: 1; font-size: 16px; font-weight: 800; color: var(--text-primary); }
+  .arch-gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 92px; }
+  .arch-gauge-label { font-size: 11px; color: var(--text-muted); text-align: center; line-height: 1.4; }
+  .arch-gauge.ring-ok { --ring: var(--ok); }
+  .arch-gauge.ring-warn { --ring: var(--warn); }
+  .arch-gauge.ring-brand { --ring: var(--color-brand-primary); }
+  .arch-gauge.ring-accent2 { --ring: var(--accent2); }
+  .arch-topology { width: 100%; overflow-x: auto; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); padding: 16px; margin-bottom: 20px; }
+  .arch-topology svg { display: block; min-width: 480px; margin: 0 auto; }
+  .arch-node rect, .arch-node circle { fill: var(--bg-primary); stroke: var(--border-color); stroke-width: 1.5; }
+  .arch-node.node-active rect, .arch-node.node-active circle { stroke: var(--color-brand-primary); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-brand-primary) 55%, transparent)); }
+  .arch-node text { fill: var(--text-primary); font-size: 11px; font-family: system-ui, sans-serif; }
+  .arch-link { stroke: var(--text-muted); stroke-width: 1.5; fill: none; }
+  .arch-link.link-logical { stroke-dasharray: 4 3; }
+  /* [2026-07-25 §8-9 인프라 존] 정책 위반 경로(예: 중계서버 없이 외부→DB 직접 규칙) 강조 */
+  .arch-link.link-blocked { stroke: var(--warn); stroke-width: 2; stroke-dasharray: 3 3; }
+  /* 존 밴드 라벨 — .arch-node 밖의 최상위 <text>(zone 이름)는 별도 테마색 지정 필요 */
+  .arch-topology svg > text { fill: var(--text-muted); font-family: system-ui, sans-serif; }
 </style>
 </head>
 <body>
@@ -86,18 +146,170 @@
 
             <div class="panel" data-panel="2">
               <h2>분야 선택</h2>
-              <p class="desc">이 프로젝트가 다룰 기술영역(§5)과 아키텍처 계층(§5-B)을 선택합니다 — 이후 청크 분류의 1차 필터가 됩니다.</p>
+              <div class="info-box">이 프로젝트가 다룰 <b>기술영역</b>과 <b>아키텍처 계층</b>을 선택합니다 — 이후 문서를
+                업로드하면 여기서 고른 분야를 기준으로 요구사항이 자동 분류됩니다. 용어가 낯설면 카드 아래 짧은
+                설명을 참고하거나 <a class="glossary-link" href="architecture-glossary.html" target="_blank">📖 용어 자세히 알아보기 →</a>를 열어보세요.</div>
               <div class="field"><label>기술영역(§5, 복수선택)</label><div class="card-grid" id="areas-grid"></div></div>
               <div class="field"><label>아키텍처 계층(§5-B, 복수선택)</label><div class="card-grid" id="layers-grid"></div></div>
+
+              <div class="subsection-title">배포 구성 <a class="glossary-link" href="architecture-glossary.html#ha" target="_blank">📖 HA란?</a></div>
+              <div class="toggle-row">
+                <button class="toggle-btn" id="btn-single" onclick="setHa(false)">단일 구성</button>
+                <button class="toggle-btn" id="btn-ha" onclick="setHa(true)">이중화(HA) 구성</button>
+              </div>
+              <div id="ha-fields" style="display:none;">
+                <div class="conditional-field">
+                  <label>HA 관리 방식</label>
+                  <select id="f-ha-management">
+                    <option value="">선택...</option>
+                    <option value="keepalived_vip">Keepalived + VIP</option>
+                    <option value="pacemaker_corosync">Pacemaker + Corosync</option>
+                    <option value="cloud_lb">클라우드 로드밸런서(ALB/NLB)</option>
+                    <option value="custom">기타(직접입력)</option>
+                  </select>
+                </div>
+                <div class="toggle-row"><span style="font-size:12px;color:var(--text-muted)">WebSocket 사용</span>
+                  <button class="toggle-btn" id="btn-ws-off" onclick="setToggle('uses_websocket', false)">사용 안 함</button>
+                  <button class="toggle-btn" id="btn-ws-on" onclick="setToggle('uses_websocket', true)">사용함</button>
+                </div>
+                <div class="conditional-field" id="backplane-field" style="display:none;">
+                  <label>실시간 백플레인</label>
+                  <select id="f-backplane">
+                    <option value="">선택...</option>
+                    <option value="redis">Redis Pub/Sub</option>
+                    <option value="nats">NATS</option>
+                    <option value="none">없음(단일 노드로 충분)</option>
+                  </select>
+                </div>
+                <div class="toggle-row"><span style="font-size:12px;color:var(--text-muted)">데이터 그리드(표 화면) 사용</span>
+                  <button class="toggle-btn" id="btn-grid-off" onclick="setToggle('uses_grid', false)">사용 안 함</button>
+                  <button class="toggle-btn" id="btn-grid-on" onclick="setToggle('uses_grid', true)">사용함</button>
+                </div>
+                <div class="conditional-field" id="grid-field" style="display:none;">
+                  <label>그리드 솔루션 <a class="glossary-link" href="architecture-glossary.html#grid" target="_blank">📖 추천 보기</a></label>
+                  <input type="text" id="f-grid-solution" placeholder="예: Tabulator" />
+                  <div class="tag-suggestions" id="grid-suggestions"></div>
+                </div>
+                <div class="toggle-row"><span style="font-size:12px;color:var(--text-muted)">AI(LLM) 업무 여부</span>
+                  <button class="toggle-btn" id="btn-llm-off" onclick="setToggle('has_ai_workload', false)">없음</button>
+                  <button class="toggle-btn" id="btn-llm-on" onclick="setToggle('has_ai_workload', true)">있음</button>
+                </div>
+                <div class="conditional-field" id="llm-field" style="display:none;">
+                  <label>LLM 서버 방식 <a class="glossary-link" href="architecture-glossary.html#llm" target="_blank">📖 추천 보기</a></label>
+                  <input type="text" id="f-llm-solution" placeholder="예: Ollama" />
+                  <div class="tag-suggestions" id="llm-suggestions"></div>
+                  <label style="margin-top:8px;">서버 정보(호스트/포트/모델명)</label>
+                  <input type="text" id="f-llm-server-info" placeholder="예: 192.168.0.10:11434, llama3.1" />
+                </div>
+                <div class="toggle-row"><span style="font-size:12px;color:var(--text-muted)">리포트 기능 여부</span>
+                  <button class="toggle-btn" id="btn-report-off" onclick="setToggle('has_report', false)">없음</button>
+                  <button class="toggle-btn" id="btn-report-on" onclick="setToggle('has_report', true)">있음</button>
+                </div>
+                <div class="conditional-field" id="report-field" style="display:none;">
+                  <label>리포트 솔루션 <a class="glossary-link" href="architecture-glossary.html#report" target="_blank">📖 추천 보기</a></label>
+                  <input type="text" id="f-report-solution" placeholder="예: JasperReports Community" />
+                  <div class="tag-suggestions" id="report-suggestions"></div>
+                </div>
+              </div>
+
+              <div class="subsection-title">보안 수준 <a class="glossary-link" href="architecture-glossary.html#security-hash" target="_blank">📖 자세히</a></div>
+              <div class="toggle-row">
+                <button class="toggle-btn" id="btn-sec-standard" onclick="setSecurityLevel('standard')">표준(HTTP)</button>
+                <button class="toggle-btn" id="btn-sec-enhanced" onclick="setSecurityLevel('enhanced')">강화(HTTPS)</button>
+                <button class="toggle-btn" id="btn-sec-custom" onclick="setSecurityLevel('custom')">커스텀</button>
+              </div>
+              <div id="security-fields" style="display:none;">
+                <div class="conditional-field">
+                  <label>인증서 종류</label>
+                  <select id="f-tls-cert-type">
+                    <option value="self_signed">사설 인증서(자체서명 OpenSSL)</option>
+                    <option value="public_ca">공인 인증서(Let's Encrypt 등)</option>
+                  </select>
+                </div>
+                <div class="conditional-field">
+                  <label>비밀번호 저장 방식</label>
+                  <select id="f-password-hash" onchange="onPasswordHashChange()">
+                    <option value="sha256">SHA-256(기본)</option>
+                    <option value="bcrypt">bcrypt</option>
+                    <option value="argon2id">Argon2id(OWASP 2026 권장)</option>
+                  </select>
+                  <span class="warn-badge" id="hash-warn">⚠ 비권장 — 이유 보기</span>
+                </div>
+                <div class="conditional-field">
+                  <label>로그인 세션</label>
+                  <input type="text" value="세션 기반(기본, 항상 켜짐)" disabled style="opacity:.6;" />
+                </div>
+              </div>
+
+              <div class="subsection-title">아키텍처 구성 요약</div>
+              <div class="arch-summary" id="arch-summary"></div>
+              <div class="arch-topology" id="arch-topology"></div>
             </div>
 
             <div class="panel" data-panel="3">
+              <h2>인프라 구성 <a class="glossary-link" href="architecture-glossary.html#network-zone" target="_blank">📖 존·DMZ란?</a></h2>
+              <div class="info-box">외부에서 <b>내부 DB로 직접 접근</b>하는 것은 금지되며, 반드시 <b>중계서버(GW)</b>를
+                거쳐야 합니다. 외부 노출 서버는 <b>HTTPS/SSL</b>이 필요하고, DMZ→내부 접근은 <b>정해진 IP·포트</b>로만
+                허용됩니다. 아래에서 네트워크 존과 서버를 등록하면 이 정책이 자동으로 검증되고 다이어그램으로 시각화됩니다.
+                <a class="glossary-link" href="architecture-glossary.html#network-zone" target="_blank">📖 용어 자세히 알아보기 →</a></div>
+              <div class="toggle-row">
+                <button class="toggle-btn" id="btn-infra-off" onclick="setInfraConfigured(false)">구성 안 함</button>
+                <button class="toggle-btn" id="btn-infra-on" onclick="setInfraConfigured(true)">인프라 구성 등록</button>
+              </div>
+              <div id="infra-fields" style="display:none;">
+                <div class="subsection-title">네트워크 존(자유 추가 가능)</div>
+                <div class="card-grid" id="infra-zones-grid"></div>
+                <div class="conditional-field">
+                  <label>존 추가</label>
+                  <input type="text" id="f-zone-code" placeholder="코드 (예: partner_extranet)" style="max-width:180px;display:inline-block;" />
+                  <input type="text" id="f-zone-label" placeholder="표시명 (예: 협력사 전용망)" style="max-width:180px;display:inline-block;" />
+                  <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:400;text-transform:none;">
+                    <input type="checkbox" id="f-zone-exposed" style="width:auto;" /> 외부 노출(exposed)
+                  </label>
+                  <button class="btn" onclick="addZone()">+ 존 추가</button>
+                </div>
+
+                <div class="subsection-title">서버 등록</div>
+                <div class="conditional-field">
+                  <input type="text" id="f-srv-name" placeholder="서버명 (예: WAS-01)" style="max-width:140px;display:inline-block;" />
+                  <select id="f-srv-zone" style="max-width:160px;display:inline-block;"></select>
+                  <select id="f-srv-role" style="max-width:160px;display:inline-block;"></select>
+                  <input type="text" id="f-srv-ip" placeholder="IP (예: 10.0.0.5)" style="max-width:140px;display:inline-block;" />
+                  <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:400;text-transform:none;">
+                    <input type="checkbox" id="f-srv-https" style="width:auto;" /> HTTPS 전용
+                  </label>
+                  <div class="tag-wrap" id="srv-ports-wrap">
+                    <input type="text" class="tag-input" id="srv-port-input" placeholder="포트 입력 후 Enter (다수 가능)..." />
+                  </div>
+                  <button class="btn" onclick="addServer()">+ 서버 등록</button>
+                </div>
+                <div class="card-grid" id="infra-servers-grid"></div>
+
+                <div class="subsection-title">허용 규칙 (Zone→Zone 접근 화이트리스트)</div>
+                <div class="conditional-field">
+                  <select id="f-rule-from" style="max-width:160px;display:inline-block;"></select>
+                  <span style="font-size:12px;">→</span>
+                  <select id="f-rule-to" style="max-width:160px;display:inline-block;"></select>
+                  <div class="tag-wrap" id="rule-ports-wrap">
+                    <input type="text" class="tag-input" id="rule-port-input" placeholder="허용 포트 입력 후 Enter..." />
+                  </div>
+                  <button class="btn" onclick="addAllowRule()">+ 허용 규칙 추가</button>
+                </div>
+                <div class="card-grid" id="infra-rules-grid"></div>
+                <div class="error-box" id="infra-error-box"></div>
+
+                <div class="subsection-title">인프라 구성도</div>
+                <div class="arch-topology" id="infra-topology"></div>
+              </div>
+            </div>
+
+            <div class="panel" data-panel="4">
               <h2>첨부 문서 유형</h2>
               <p class="desc">이 프로젝트에 첨부될 문서 유형(§5-A)을 선택합니다. ⚠ 표시는 개인정보 가능성이 높은 유형입니다.</p>
               <div class="card-grid" id="doctypes-grid"></div>
             </div>
 
-            <div class="panel" data-panel="4">
+            <div class="panel" data-panel="5">
               <h2>프레임워크·솔루션 사전 등록</h2>
               <p class="desc">이 프로젝트가 기반으로 삼을 프레임워크·솔루션 태그(1차 설계 §2-4, 자유 태그 + 추천목록).</p>
               <div class="tag-wrap" id="tag-wrap">
@@ -106,13 +318,13 @@
               <div class="tag-suggestions" id="tag-suggestions"></div>
             </div>
 
-            <div class="panel" data-panel="5">
+            <div class="panel" data-panel="6">
               <h2>정보 접근 정책</h2>
               <p class="desc">개인정보 포함 문서의 기본 열람 정책(2차 설계 §2-4 PII 게이트의 기본값).</p>
               <div class="radio-cards" id="policy-cards"></div>
             </div>
 
-            <div class="panel" data-panel="6">
+            <div class="panel" data-panel="7">
               <h2>완료 확인</h2>
               <p class="desc">
                 아래 내용을 확인하고 프로젝트를 생성합니다 — 생성 즉시 GNB 프로젝트 선택기에 나타나며,
@@ -139,9 +351,54 @@
 <script src="../js/project-scope.js"></script>
 <script src="../js/shell-loader.js"></script>
 <script>
-// graphify_engine/codes.py와 동일한 코드 목록(SSOT는 파이썬 쪽 — 이 목록이 달라지면 여기도 갱신 필요, CRZ 수동 동기화 지점)
-const AREA_CODES = ["WEB","WAS","DB","SEC","GRID","A11Y","VULN","GW","LLM","RPT"];
-const LAYER_CODES = ["SYS","SECU","UXENV","TPI","INTG"];
+// backend/domain/requirements/codes.py의 DOMAIN_CODES/LAYER_CODES와 동일 내용(SSOT는 파이썬
+// 쪽 — 이 목록이 달라지면 여기도 갱신 필요, CRZ 수동 동기화 지점 — 기존부터 있던 패턴).
+// [W1 2026-07-25 §8-2] 코드 배열 → {code,label,desc} 객체 배열로 승격(용어 설명 배선).
+const AREA_CODES = [
+  {code:"WEB", label:"웹 프론트엔드", desc:"사용자가 브라우저로 직접 보는 화면(웹사이트·웹앱) 관련 요구사항"},
+  {code:"WAS", label:"애플리케이션 서버(WAS)", desc:"화면 뒤에서 실제 로직을 처리하는 서버(백엔드) 관련 요구사항"},
+  {code:"DB", label:"데이터베이스", desc:"데이터를 저장·조회하는 저장소(DB) 구성·성능 관련 요구사항"},
+  {code:"SEC", label:"보안", desc:"암호화·인증·접근제어 등 보안 관련 요구사항"},
+  {code:"GRID", label:"데이터 그리드(표 화면)", desc:"대량 데이터를 표(그리드) 형태로 보여주고 편집하는 화면 컴포넌트"},
+  {code:"A11Y", label:"웹 접근성", desc:"장애인·고령자 등 누구나 이용 가능하게 하는 웹 표준 준수 요구사항"},
+  {code:"VULN", label:"취약점 점검", desc:"보안 취약점 진단·모의해킹·코드 점검 관련 요구사항"},
+  {code:"GW", label:"게이트웨이/연계", desc:"외부 시스템과 데이터를 주고받는 연계·중계 서버 관련 요구사항"},
+  {code:"LLM", label:"AI(생성형 AI/LLM)", desc:"ChatGPT류 AI 모델을 활용하는 기능(요약·분류·챗봇 등) 관련 요구사항"},
+  {code:"RPT", label:"보고서/리포트", desc:"데이터를 문서·PDF·엑셀 등으로 출력하는 보고서 기능 관련 요구사항"},
+];
+const LAYER_CODES = [
+  {code:"SYS", label:"시스템/인프라 계층", desc:"인프라·서버·OS·배치"},
+  {code:"SECU", label:"보안 계층", desc:"아키텍처 계층 관점의 보안(기술영역 SEC와는 다른 축)"},
+  {code:"UXENV", label:"사용자 환경 계층", desc:"클라이언트 UX·접근성·디바이스 환경"},
+  {code:"TPI", label:"외부 연동(서드파티) 계층", desc:"외부 API·PG·인증 연동"},
+  {code:"INTG", label:"내부 연계 계층", desc:"내부 시스템 간 연계·배치 연동·ESB"},
+];
+// [W4 2026-07-25 §8-4] WebSearch 조사 기반 정적 큐레이션 추천(출처: 04_PHASE0 §8-4 참조)
+const GRID_SUGGESTIONS = [
+  {name:"Tabulator", opensource:true, url:"http://tabulator.info/docs"},
+  {name:"Toast UI Grid", opensource:true, url:"https://ui.toast.com/tui-grid"},
+  {name:"AG Grid Community", opensource:true, url:"https://www.ag-grid.com/documentation"},
+];
+const LLM_SUGGESTIONS = [
+  {name:"Ollama", url:"https://ollama.com"},
+  {name:"vLLM", url:"https://docs.vllm.ai"},
+  {name:"LocalAI", url:"https://localai.io"},
+];
+const REPORT_SUGGESTIONS = [
+  {name:"JasperReports Community", free:true, url:"https://community.jaspersoft.com"},
+  {name:"Metabase(Open Source)", free:true, url:"https://www.metabase.com/start/oss"},
+  {name:"ReportBro", free:true, url:"https://www.reportbro.com"},
+];
+// [W-INFRA 2026-07-25 §8-9] backend/domain/requirements/codes.py의 NETWORK_ZONE_PRESETS와
+// 동일 내용(SSOT는 파이썬 쪽, CRZ 수동 동기화 지점 — AREA_CODES/LAYER_CODES와 동일 기존 패턴).
+// 고정 enum이 아니다 — 사용자가 이 프리셋 외에 커스텀 존을 자유롭게 추가할 수 있다(2026-07-25
+// 사용자 확인: "동적으로 내가 필요한 구성을 더 연결해서 추가 할수 있도록 해줘").
+const NETWORK_ZONE_PRESETS = [
+  {code:"external", label:"외부망(Internet)", desc:"인터넷 등 신뢰할 수 없는 외부 구간", exposed:true},
+  {code:"dmz_outer", label:"외부 DMZ(SSL 종단)", desc:"리버스프록시/로드밸런서가 SSL을 종단하는 완충 구간", exposed:true},
+  {code:"dmz_inner", label:"내부 DMZ(중계서버)", desc:"외부→내부 API 호출을 대신 받아 내부로 전달하는 중계/게이트웨이 구간", exposed:true},
+  {code:"internal", label:"내부망", desc:"WAS·DB 등 실제 업무 시스템이 위치하는 신뢰 구간", exposed:false},
+];
 const DOC_TYPES = [
   {code:"BIZ", pii:false}, {code:"ITV", pii:true}, {code:"ENV", pii:false},
   {code:"QA", pii:false}, {code:"TECH", pii:false}, {code:"OUT", pii:false},
@@ -157,10 +414,11 @@ const ACCESS_POLICIES = [
 const STEPS = [
   {num:1, title:"기본 정보", sub:"프로젝트명·목표"},
   {num:2, title:"분야 선택", sub:"기술영역·계층"},
-  {num:3, title:"첨부 문서 유형", sub:"§5-A 문서유형"},
-  {num:4, title:"프레임워크 등록", sub:"solution_stack"},
-  {num:5, title:"정보 접근 정책", sub:"PII 열람 정책"},
-  {num:6, title:"완료 확인", sub:"JSON 다운로드"},
+  {num:3, title:"인프라 구성", sub:"네트워크 존·서버·다이어그램"},
+  {num:4, title:"첨부 문서 유형", sub:"§5-A 문서유형"},
+  {num:5, title:"프레임워크 등록", sub:"solution_stack"},
+  {num:6, title:"정보 접근 정책", sub:"PII 열람 정책"},
+  {num:7, title:"완료 확인", sub:"JSON 다운로드"},
 ];
 
 const state = {
@@ -169,6 +427,20 @@ const state = {
   selectedDocTypes: new Set(),
   solutionStack: [],
   accessPolicy: "SHARED",
+  // [W3/W5 2026-07-25 §8-3/§8-5] HA·보안 조건부 필드 — 전부 backend ProjectConfig 필드와 1:1 대응
+  is_ha: false,
+  uses_websocket: false,
+  uses_grid: false,
+  has_ai_workload: false,
+  has_report: false,
+  security_level: "standard",
+  // [W-INFRA 2026-07-25 §8-9] 인프라 존 구성 — backend ProjectConfig 신규 필드와 1:1 대응
+  infra_configured: false,
+  infra_zones: [],        // 사용자가 추가한 커스텀 존만(프리셋은 NETWORK_ZONE_PRESETS 상수로 별도 관리)
+  infra_servers: [],
+  infra_allow_rules: [],
+  _srvPorts: [],           // 서버 등록 폼의 "다수 포트" 입력 중인 임시값
+  _rulePorts: [],          // 허용규칙 폼의 "허용 포트" 입력 중인 임시값
 };
 
 let currentStep = 1;
@@ -182,14 +454,338 @@ function renderSidebar() {
   `).join("");
 }
 
-function renderCardGrid(containerId, codes, selectedSet, toggleFn) {
-  document.getElementById(containerId).innerHTML = codes.map(c => `
-    <div class="check-card ${selectedSet.has(c) ? 'selected' : ''}" onclick="${toggleFn}('${c}')">${c}</div>
+// [W1 2026-07-25 §8-2] 원시 코드만 렌더링하던 것을 라벨(굵게)+설명(작은 글씨)로 확장 —
+// 근본원인이 "설명 콘텐츠 부재"가 아니라 "배선 부재"였음(§8-1 실측) 해소.
+function renderCardGrid(containerId, items, selectedSet, toggleFn) {
+  document.getElementById(containerId).innerHTML = items.map(it => `
+    <div class="check-card ${selectedSet.has(it.code) ? 'selected' : ''}" onclick="${toggleFn}('${it.code}')" title="${it.desc}">
+      <span class="card-label">${it.label}</span>
+      <span class="card-desc">${it.desc}</span>
+    </div>
   `).join("");
 }
 
-function toggleArea(code) { toggleSetMember(state.selectedAreas, code); renderCardGrid("areas-grid", AREA_CODES, state.selectedAreas, "toggleArea"); }
-function toggleLayer(code) { toggleSetMember(state.selectedLayers, code); renderCardGrid("layers-grid", LAYER_CODES, state.selectedLayers, "toggleLayer"); }
+function toggleArea(code) { toggleSetMember(state.selectedAreas, code); renderCardGrid("areas-grid", AREA_CODES, state.selectedAreas, "toggleArea"); renderArchSummary(); }
+function toggleLayer(code) { toggleSetMember(state.selectedLayers, code); renderCardGrid("layers-grid", LAYER_CODES, state.selectedLayers, "toggleLayer"); renderArchSummary(); }
+
+// [W3 2026-07-25 §8-3] HA(이중화) 토글 + 조건부 필드 표시/숨김
+function setHa(isHa) {
+  state.is_ha = isHa;
+  document.getElementById("btn-single").classList.toggle("on", !isHa);
+  document.getElementById("btn-ha").classList.toggle("on", isHa);
+  document.getElementById("ha-fields").style.display = isHa ? "block" : "none";
+  if (!isHa) {
+    // 단일 구성으로 되돌리면 하위 선택도 초기화(불필요한 값이 config에 남지 않게)
+    state.uses_websocket = false; state.uses_grid = false; state.has_ai_workload = false; state.has_report = false;
+    ["ws","grid","llm","report"].forEach(k => document.getElementById(`btn-${k}-off`)?.classList.add("on"));
+    ["backplane-field","grid-field","llm-field","report-field"].forEach(id => document.getElementById(id).style.display = "none");
+  }
+  renderArchSummary(); renderArchTopology();
+}
+
+function setToggle(key, value) {
+  state[key] = value;
+  const idMap = { uses_websocket: "ws", uses_grid: "grid", has_ai_workload: "llm", has_report: "report" };
+  const prefix = idMap[key];
+  document.getElementById(`btn-${prefix}-off`).classList.toggle("on", !value);
+  document.getElementById(`btn-${prefix}-on`).classList.toggle("on", value);
+  const fieldMap = { uses_websocket: "backplane-field", uses_grid: "grid-field", has_ai_workload: "llm-field", has_report: "report-field" };
+  document.getElementById(fieldMap[key]).style.display = value ? "block" : "none";
+  renderArchTopology();
+}
+
+// [W4 2026-07-25 §8-4] 그리드/LLM/리포트 추천 태그 — 클릭 시 입력필드에 채움(강제 아님)
+function renderSuggestionRow(containerId, inputId, items) {
+  document.getElementById(containerId).innerHTML = items.map(it => `
+    <span class="tag-sug" onclick="document.getElementById('${inputId}').value='${it.name}'">+ ${it.name}</span>
+  `).join("");
+}
+
+// [W5 2026-07-25 §8-5] 보안레벨 3단계 프리셋
+function setSecurityLevel(level) {
+  state.security_level = level;
+  ["standard","enhanced","custom"].forEach(l => document.getElementById(`btn-sec-${l}`).classList.toggle("on", l === level));
+  document.getElementById("security-fields").style.display = level === "standard" ? "none" : "block";
+  renderArchSummary();
+}
+function onPasswordHashChange() {
+  const algo = document.getElementById("f-password-hash").value;
+  document.getElementById("hash-warn").style.display = algo === "sha256" ? "inline-block" : "none";
+  renderArchSummary();
+}
+
+// [W-INFRA 2026-07-25 §8-9] 인프라 존(네트워크 구성) — 인프라/보안 전문가 agent 협업 설계 결과.
+// zone은 고정 enum이 아니라 사용자가 자유롭게 추가하는 리스트(NETWORK_ZONE_PRESETS는 시드값).
+function allZones() { return [...NETWORK_ZONE_PRESETS, ...state.infra_zones]; }
+
+function setInfraConfigured(on) {
+  state.infra_configured = on;
+  document.getElementById("btn-infra-off").classList.toggle("on", !on);
+  document.getElementById("btn-infra-on").classList.toggle("on", on);
+  document.getElementById("infra-fields").style.display = on ? "block" : "none";
+  if (on) {
+    renderZonesGrid(); renderServerFormOptions(); renderServersGrid();
+    renderRuleFormOptions(); renderRulesGrid(); renderInfraTopology();
+  }
+}
+
+function addZone() {
+  const code = document.getElementById("f-zone-code").value.trim();
+  const label = document.getElementById("f-zone-label").value.trim() || code;
+  const exposed = document.getElementById("f-zone-exposed").checked;
+  if (!code) return;
+  if (allZones().some(z => z.code === code)) { document.getElementById("infra-error-box").textContent = "⚠ 이미 존재하는 존 코드입니다: " + code; return; }
+  state.infra_zones.push({ code, label, desc: "", exposed });
+  document.getElementById("f-zone-code").value = "";
+  document.getElementById("f-zone-label").value = "";
+  document.getElementById("f-zone-exposed").checked = false;
+  document.getElementById("infra-error-box").textContent = "";
+  renderZonesGrid(); renderServerFormOptions(); renderRuleFormOptions(); renderInfraTopology();
+}
+
+function removeZone(code) {
+  // [2026-07-25 독립 코드리뷰 CRITICAL #1 대응] 이 존을 참조하는 서버가 남아있으면 삭제를
+  // 거부한다 — 그냥 지우면 고아 서버가 남아 백엔드 검증에서 "미등록 zone 참조"로 걸리긴 하지만,
+  // UI 단계에서 먼저 막아 사용자가 왜 저장이 실패하는지 헤매지 않게 한다(방어 2중화).
+  const inUse = state.infra_servers.filter(s => s.zone === code);
+  if (inUse.length) {
+    document.getElementById("infra-error-box").textContent =
+      `⚠ 이 존을 참조하는 서버가 ${inUse.length}개 있어 삭제할 수 없습니다: ${inUse.map(s => s.name).join(", ")} — 먼저 서버를 삭제하거나 다른 존으로 옮기세요`;
+    return;
+  }
+  state.infra_zones = state.infra_zones.filter(z => z.code !== code);
+  renderZonesGrid(); renderServerFormOptions(); renderRuleFormOptions(); renderInfraTopology();
+}
+
+function renderZonesGrid() {
+  document.getElementById("infra-zones-grid").innerHTML = allZones().map(z => `
+    <div class="check-card" title="${z.desc || ''}">
+      <span class="card-label">${z.label}${z.exposed ? ' <span class="pii-badge">⚠ 외부노출</span>' : ''}</span>
+      <span class="card-desc">${z.code}${NETWORK_ZONE_PRESETS.some(p => p.code === z.code) ? '' : ` · <span style="cursor:pointer;color:var(--warn-text);" onclick="removeZone('${z.code}')">✕ 삭제</span>`}</span>
+    </div>
+  `).join("");
+}
+
+function renderServerFormOptions() {
+  document.getElementById("f-srv-zone").innerHTML = allZones().map(z => `<option value="${z.code}">${z.label}</option>`).join("");
+  document.getElementById("f-srv-role").innerHTML = AREA_CODES.map(a => `<option value="${a.code}">${a.label}</option>`).join("");
+}
+
+function renderPortTags(wrapId, inputId, arr) {
+  const wrap = document.getElementById(wrapId);
+  wrap.querySelectorAll(".tag").forEach(el => el.remove());
+  const input = document.getElementById(inputId);
+  arr.forEach(p => {
+    const el = document.createElement("span");
+    el.className = "tag";
+    el.innerHTML = `${p}<span class="del" onclick="removePortTag('${wrapId}', ${p})">×</span>`;
+    wrap.insertBefore(el, input);
+  });
+}
+
+function removePortTag(wrapId, port) {
+  if (wrapId === "srv-ports-wrap") {
+    state._srvPorts = state._srvPorts.filter(p => p !== port);
+    renderPortTags("srv-ports-wrap", "srv-port-input", state._srvPorts);
+  } else {
+    state._rulePorts = state._rulePorts.filter(p => p !== port);
+    renderPortTags("rule-ports-wrap", "rule-port-input", state._rulePorts);
+  }
+}
+
+function addServer() {
+  const name = document.getElementById("f-srv-name").value.trim();
+  const zone = document.getElementById("f-srv-zone").value;
+  const role = document.getElementById("f-srv-role").value;
+  const ip = document.getElementById("f-srv-ip").value.trim();
+  const https_only = document.getElementById("f-srv-https").checked;
+  const errEl = document.getElementById("infra-error-box");
+  if (!name || !ip || !state._srvPorts.length) { errEl.textContent = "⚠ 서버명·IP·포트(최소 1개)는 필수입니다"; return; }
+  if (state.infra_servers.some(s => s.name === name)) { errEl.textContent = "⚠ 이미 등록된 서버명입니다: " + name; return; }
+  state.infra_servers.push({ name, zone, role, ip, ports: [...state._srvPorts], https_only, description: "" });
+  document.getElementById("f-srv-name").value = "";
+  document.getElementById("f-srv-ip").value = "";
+  document.getElementById("f-srv-https").checked = false;
+  state._srvPorts = [];
+  renderPortTags("srv-ports-wrap", "srv-port-input", state._srvPorts);
+  errEl.textContent = "";
+  renderServersGrid(); renderRuleFormOptions(); renderInfraTopology();
+}
+
+function removeServer(name) {
+  state.infra_servers = state.infra_servers.filter(s => s.name !== name);
+  state.infra_allow_rules = state.infra_allow_rules.filter(r => r.from_server !== name && r.to_server !== name);
+  renderServersGrid(); renderRuleFormOptions(); renderRulesGrid(); renderInfraTopology();
+}
+
+function renderServersGrid() {
+  document.getElementById("infra-servers-grid").innerHTML = state.infra_servers.map(s => `
+    <div class="check-card">
+      <span class="card-label">${s.name} <span class="pii-badge" style="color:var(--text-muted);">${s.role}</span></span>
+      <span class="card-desc">${s.zone} · ${s.ip}:${s.ports.join(",")}${s.https_only ? " · HTTPS전용" : ""}
+        · <span style="cursor:pointer;color:var(--warn-text);" onclick="removeServer('${s.name}')">✕ 삭제</span></span>
+    </div>
+  `).join("");
+}
+
+function renderRuleFormOptions() {
+  const opts = state.infra_servers.map(s => `<option value="${s.name}">${s.name} (${s.zone})</option>`).join("");
+  document.getElementById("f-rule-from").innerHTML = opts;
+  document.getElementById("f-rule-to").innerHTML = opts;
+}
+
+function addAllowRule() {
+  const from_server = document.getElementById("f-rule-from").value;
+  const to_server = document.getElementById("f-rule-to").value;
+  const errEl = document.getElementById("infra-error-box");
+  if (!from_server || !to_server || !state._rulePorts.length) { errEl.textContent = "⚠ 출발/도착 서버·허용 포트(최소 1개)는 필수입니다"; return; }
+  state.infra_allow_rules.push({ from_server, to_server, allowed_ports: [...state._rulePorts], protocol: "tcp" });
+  state._rulePorts = [];
+  renderPortTags("rule-ports-wrap", "rule-port-input", state._rulePorts);
+  errEl.textContent = "";
+  renderRulesGrid(); renderInfraTopology();
+}
+
+function removeAllowRule(idx) {
+  state.infra_allow_rules.splice(idx, 1);
+  renderRulesGrid(); renderInfraTopology();
+}
+
+function renderRulesGrid() {
+  document.getElementById("infra-rules-grid").innerHTML = state.infra_allow_rules.map((r, i) => {
+    const toSrv = state.infra_servers.find(s => s.name === r.to_server);
+    const fromSrv = state.infra_servers.find(s => s.name === r.from_server);
+    const violates = toSrv && toSrv.role === "DB" && (!fromSrv || fromSrv.role !== "GW");
+    return `
+    <div class="check-card">
+      <span class="card-label">${r.from_server} → ${r.to_server}${violates ? ' <span class="pii-badge">⚠ 중계경유 위반</span>' : ""}</span>
+      <span class="card-desc">허용 포트: ${r.allowed_ports.join(", ")}
+        · <span style="cursor:pointer;color:var(--warn-text);" onclick="removeAllowRule(${i})">✕ 삭제</span></span>
+    </div>`;
+  }).join("");
+}
+
+// [W-INFRA 2026-07-25 §8-9] 존별 수평 밴드(레인) + 그 안에 등록된 서버 노드 + 허용/위반 경로.
+// 기존 renderArchTopology()의 "선택한 것만 그린다" 원칙과 하드코딩 좌표 배치 패턴을 그대로
+// 재사용(신규 레이아웃 엔진 없음, CRZ) — 밴드 단위로만 y좌표를 나눈 확장.
+function renderInfraTopology() {
+  const el = document.getElementById("infra-topology");
+  if (!el) return;
+  if (!state.infra_configured || !state.infra_servers.length) {
+    el.innerHTML = '<p class="desc" style="margin:8px;">서버를 등록하면 존별 구성도가 여기에 표시됩니다.</p>';
+    return;
+  }
+  const zonesUsed = allZones().filter(z => state.infra_servers.some(s => s.zone === z.code));
+  const bandH = 90, bandGap = 10, marginTop = 10, nodeW = 90, nodeH = 26;
+  const bands = zonesUsed.map((z, i) => ({ ...z, y: marginTop + i * (bandH + bandGap) }));
+  const nodes = [];
+  bands.forEach(b => {
+    state.infra_servers.filter(s => s.zone === b.code).forEach((s, i) => {
+      nodes.push({ name: s.name, role: s.role, x: 20 + i * (nodeW + 14), y: b.y + bandH / 2 - nodeH / 2, w: nodeW, h: nodeH });
+    });
+  });
+  const nodeByName = Object.fromEntries(nodes.map(n => [n.name, n]));
+  const cx = n => n.x + n.w / 2, cy = n => n.y + n.h / 2;
+  const linkPaths = state.infra_allow_rules.map(r => {
+    const a = nodeByName[r.from_server], b = nodeByName[r.to_server];
+    if (!a || !b) return "";
+    const fromSrv = state.infra_servers.find(s => s.name === r.from_server);
+    const toSrv = state.infra_servers.find(s => s.name === r.to_server);
+    const violates = toSrv && toSrv.role === "DB" && (!fromSrv || fromSrv.role !== "GW");
+    return `<path class="arch-link ${violates ? "link-blocked" : ""}" d="M${cx(a)},${cy(a)} L${cx(b)},${cy(b)}"/>`;
+  }).join("");
+  const bandRects = bands.map(b => `
+    <rect x="4" y="${b.y}" width="500" height="${bandH}" rx="8"
+      fill="${b.exposed ? "color-mix(in srgb, var(--warn) 10%, transparent)" : "color-mix(in srgb, var(--ok) 10%, transparent)"}"
+      stroke="var(--border-color)"/>
+    <text x="12" y="${b.y + 14}" font-size="10" font-weight="700">${b.label}${b.exposed ? " (외부노출)" : ""}</text>
+  `).join("");
+  const nodeShapes = nodes.map(n => `
+    <g class="arch-node node-active"><rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="6"/>
+    <text x="${n.x + n.w / 2}" y="${n.y + n.h / 2 + 4}" text-anchor="middle">${n.name}</text></g>
+  `).join("");
+  const maxY = (bands.length ? bands[bands.length - 1].y + bandH : 90) + 20;
+  el.innerHTML = `<svg viewBox="0 0 520 ${maxY}" width="520" height="${maxY}">${bandRects}${linkPaths}${nodeShapes}</svg>`;
+}
+
+// [W7 2026-07-25 §8-7-A] 아키텍처 요약 — 원형 게이지 3종(실시간 데이터 아님, 설정값 요약)
+function renderArchSummary() {
+  const el = document.getElementById("arch-summary");
+  if (!el) return;
+  const requiredFields = [state.selectedAreas.size > 0, state.selectedLayers.size > 0, !!document.getElementById("f-name")?.value.trim(), !!document.getElementById("f-goal")?.value.trim()];
+  const completeness = Math.round((requiredFields.filter(Boolean).length / requiredFields.length) * 100);
+  const secPct = { standard: 33, enhanced: 66, custom: 100 }[state.security_level] || 33;
+  const haLayers = state.is_ha ? 3 : 0; // 단순화: 이중화 선택 시 WEB/WAS/DB 3계층 모두 이중화로 간주
+  const haPct = Math.round((haLayers / 3) * 100);
+
+  const gauge = (pct, label, ring) => `
+    <div class="arch-gauge-wrap">
+      <div class="arch-gauge ${ring}" style="--pct:${pct};"><span class="pct">${pct}%</span></div>
+      <div class="arch-gauge-label">${label}</div>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="arch-group"><h3>구성 완성도</h3><div class="arch-gauge-row">
+      ${gauge(completeness, "필수 항목 입력", completeness === 100 ? "ring-ok" : "ring-brand")}
+    </div></div>
+    <div class="arch-group"><h3>보안 충족도</h3><div class="arch-gauge-row">
+      ${gauge(secPct, `보안레벨: ${state.security_level}`, state.security_level === "standard" ? "ring-warn" : state.security_level === "enhanced" ? "ring-brand" : "ring-ok")}
+    </div></div>
+    <div class="arch-group"><h3>이중화 커버리지</h3><div class="arch-gauge-row">
+      ${gauge(haPct, state.is_ha ? "전 계층 이중화" : "단일 구성(유효한 선택)", "ring-accent2")}
+    </div></div>
+  `;
+}
+
+// [W7 2026-07-25 §8-7-A] SVG 토폴로지 — "선택한 것만 그려진다"(§8-7 원칙 유지)
+function renderArchTopology() {
+  const el = document.getElementById("arch-topology");
+  if (!el) return;
+  // 노드 배열 구성(선택값 기반) → 그리드 배치(균등분할, 신규 레이아웃 엔진 불필요)
+  const webCount = state.is_ha ? 2 : 1;
+  const wasCount = state.is_ha ? 2 : 1;
+  const nodes = [];
+  nodes.push({ id: "user", label: "사용자", x: 240, y: 20, w: 60, h: 28 });
+  for (let i = 0; i < webCount; i++) nodes.push({ id: `web${i}`, label: webCount > 1 ? `WEB-${i+1}` : "WEB", x: 120 + i * 240, y: 80, w: 70, h: 28 });
+  for (let i = 0; i < wasCount; i++) nodes.push({ id: `was${i}`, label: wasCount > 1 ? `WAS-${i+1}` : "WAS", x: 120 + i * 240, y: 140, w: 70, h: 28 });
+  if (state.uses_websocket && document.getElementById("f-backplane")?.value && document.getElementById("f-backplane").value !== "none") {
+    nodes.push({ id: "backplane", label: document.getElementById("f-backplane").value === "redis" ? "Redis Pub/Sub" : "NATS", x: 240, y: 200, w: 100, h: 28 });
+  }
+  if (state.has_ai_workload) nodes.push({ id: "llm", label: "LLM 서버", x: 400, y: 140, w: 70, h: 28 });
+  if (state.uses_grid) nodes.push({ id: "grid", label: "그리드", x: 400, y: 80, w: 70, h: 28 });
+  if (state.has_report) nodes.push({ id: "report", label: "리포트", x: 40, y: 140, w: 70, h: 28 });
+  const dbY = nodes.some(n => n.id === "backplane") ? 260 : 200;
+  nodes.push({ id: "db", label: "DB(공유)", x: 240, y: dbY, w: 80, h: 28 });
+
+  const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const links = [];
+  const cx = n => n.x + n.w / 2, cy = n => n.y + n.h / 2;
+  links.push([byId.user, ...nodes.filter(n => n.id.startsWith("web"))]);
+  nodes.filter(n => n.id.startsWith("web")).forEach((w, i) => {
+    const was = nodes.filter(n => n.id.startsWith("was"))[i] || nodes.filter(n => n.id.startsWith("was"))[0];
+    if (was) links.push([w, was]);
+  });
+  const dbNode = byId.db;
+  if (byId.backplane) {
+    nodes.filter(n => n.id.startsWith("was")).forEach(w => links.push([w, byId.backplane, true]));
+    links.push([byId.backplane, dbNode]);
+  } else {
+    nodes.filter(n => n.id.startsWith("was")).forEach(w => links.push([w, dbNode]));
+  }
+  if (byId.llm) nodes.filter(n => n.id.startsWith("was")).forEach(w => links.push([w, byId.llm]));
+  if (byId.grid) nodes.filter(n => n.id.startsWith("web")).forEach(w => links.push([w, byId.grid]));
+  if (byId.report) nodes.filter(n => n.id.startsWith("was")).forEach(w => links.push([w, byId.report]));
+
+  const maxY = Math.max(...nodes.map(n => n.y + n.h)) + 20;
+  const linkPaths = links.map(([a, b, logical]) =>
+    `<path class="arch-link ${logical ? 'link-logical' : ''}" d="M${cx(a)},${cy(a)+a.h/2-4} L${cx(b)},${cy(b)-b.h/2+4}"/>`
+  ).join("");
+  const nodeShapes = nodes.map(n =>
+    `<g class="arch-node node-active"><rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="6"/><text x="${n.x + n.w/2}" y="${n.y + n.h/2 + 4}" text-anchor="middle">${n.label}</text></g>`
+  ).join("");
+
+  el.innerHTML = `<svg viewBox="0 0 520 ${maxY}" width="520" height="${maxY}">${linkPaths}${nodeShapes}</svg>`;
+}
 function toggleDocType(code) { toggleSetMember(state.selectedDocTypes, code); renderDocTypeGrid(); }
 
 function toggleSetMember(set, code) { set.has(code) ? set.delete(code) : set.add(code); }
@@ -235,6 +831,7 @@ function renderPolicyCards() {
 function selectPolicy(code) { state.accessPolicy = code; renderPolicyCards(); }
 
 function buildConfig() {
+  const g = id => document.getElementById(id)?.value || null;
   return {
     project_name: document.getElementById("f-name").value.trim(),
     goal: document.getElementById("f-goal").value.trim(),
@@ -245,6 +842,31 @@ function buildConfig() {
     access_policy: state.accessPolicy,
     created_by: "",
     created_at: "",
+    // [W3 2026-07-25 §8-3] backend ProjectConfig 신규 필드와 1:1 대응
+    is_ha: state.is_ha,
+    ha_management: state.is_ha ? (g("f-ha-management") || null) : null,
+    uses_websocket: state.is_ha ? state.uses_websocket : false,
+    realtime_backplane: (state.is_ha && state.uses_websocket) ? (g("f-backplane") || null) : null,
+    uses_grid: state.is_ha ? state.uses_grid : false,
+    grid_solution: (state.is_ha && state.uses_grid) ? (g("f-grid-solution") || null) : null,
+    has_ai_workload: state.is_ha ? state.has_ai_workload : false,
+    llm_solution: (state.is_ha && state.has_ai_workload) ? (g("f-llm-solution") || null) : null,
+    llm_server_info: (state.is_ha && state.has_ai_workload) ? (g("f-llm-server-info") || null) : null,
+    has_report: state.is_ha ? state.has_report : false,
+    report_solution: (state.is_ha && state.has_report) ? (g("f-report-solution") || null) : null,
+    // [W5 2026-07-25 §8-5] 보안 레벨
+    security_level: state.security_level,
+    use_https: state.security_level !== "standard",
+    tls_cert_type: state.security_level !== "standard" ? (g("f-tls-cert-type") || null) : null,
+    password_hash_algo: state.security_level !== "standard" ? (g("f-password-hash") || "sha256") : "sha256",
+    session_based_login: true,
+    // [W-INFRA 2026-07-25 §8-9] 인프라 존 구성
+    infra_configured: state.infra_configured,
+    infra_zones: state.infra_configured ? state.infra_zones : [],
+    infra_servers: state.infra_configured ? state.infra_servers : [],
+    infra_allow_rules: state.infra_configured ? state.infra_allow_rules : [],
+    enforce_https_external: true,
+    relay_required: true,
   };
 }
 
@@ -264,6 +886,9 @@ function renderSummary() {
     <dt>기술영역</dt><dd>${cfg.selected_areas.join(", ") || "—"}</dd>
     <dt>아키텍처 계층</dt><dd>${cfg.selected_layers.join(", ") || "—"}</dd>
     <dt>첨부 문서 유형</dt><dd>${cfg.selected_doc_types.join(", ") || "—"}</dd>
+    <dt>배포 구성</dt><dd>${cfg.is_ha ? `이중화(HA)${cfg.ha_management ? " — " + cfg.ha_management : ""}` : "단일 구성"}</dd>
+    <dt>보안 수준</dt><dd>${cfg.security_level}${cfg.password_hash_algo === "sha256" ? " (비밀번호: SHA-256 ⚠ 비권장)" : ` (비밀번호: ${cfg.password_hash_algo})`}</dd>
+    <dt>인프라 구성</dt><dd>${cfg.infra_configured ? `서버 ${cfg.infra_servers.length}대 · 허용규칙 ${cfg.infra_allow_rules.length}건` : "구성 안 함"}</dd>
     <dt>프레임워크·솔루션</dt><dd>${cfg.solution_stack.join(", ") || "—"}</dd>
     <dt>접근 정책</dt><dd>${cfg.access_policy}</dd>
   `;
@@ -317,8 +942,9 @@ function goStep(n) {
 }
 
 // [2026-07-23 고도화] documents.html("+ 새 문서유형")에서 추가한 프로젝트 배경 문서유형
-// (제안서/회의록 등)이 이 화면의 STEP3 선택지에도 나타나도록 병합한다(CRZ — DOC_TYPES
-// 배열에 추가만, 렌더링 로직은 renderDocTypeGrid() 그대로 재사용).
+// (제안서/회의록 등)이 이 화면의 STEP4(첨부 문서 유형) 선택지에도 나타나도록 병합한다(CRZ —
+// DOC_TYPES 배열에 추가만, 렌더링 로직은 renderDocTypeGrid() 그대로 재사용). [2026-07-25
+// STEP3 인프라구성 신설로 구 STEP3(문서유형)→STEP4 순연 — 주석 번호 갱신, 독립 코드리뷰 MINOR #3]
 async function loadCustomDocTypes() {
   try {
     const projectId = window.AegisProject ? window.AegisProject.getId() : "default";
@@ -345,6 +971,39 @@ function init() {
   document.getElementById("tag-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); addTag(e.target.value); e.target.value = ""; }
   });
+
+  // [W3~W5/W7 2026-07-25] 초기 토글 상태(전부 기본값 off/standard) + 추천 태그 + 요약 렌더
+  document.getElementById("btn-single").classList.add("on");
+  ["ws","grid","llm","report"].forEach(k => document.getElementById(`btn-${k}-off`).classList.add("on"));
+  document.getElementById("btn-sec-standard").classList.add("on");
+  document.getElementById("btn-infra-off").classList.add("on");
+  renderSuggestionRow("grid-suggestions", "f-grid-solution", GRID_SUGGESTIONS);
+  renderSuggestionRow("llm-suggestions", "f-llm-solution", LLM_SUGGESTIONS);
+  renderSuggestionRow("report-suggestions", "f-report-solution", REPORT_SUGGESTIONS);
+  document.getElementById("srv-port-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const p = parseInt(e.target.value, 10);
+      if (p > 0 && p < 65536 && !state._srvPorts.includes(p)) state._srvPorts.push(p);
+      e.target.value = "";
+      renderPortTags("srv-ports-wrap", "srv-port-input", state._srvPorts);
+    }
+  });
+  document.getElementById("rule-port-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const p = parseInt(e.target.value, 10);
+      if (p > 0 && p < 65536 && !state._rulePorts.includes(p)) state._rulePorts.push(p);
+      e.target.value = "";
+      renderPortTags("rule-ports-wrap", "rule-port-input", state._rulePorts);
+    }
+  });
+  document.getElementById("f-backplane").addEventListener("change", renderArchTopology);
+  document.getElementById("f-name").addEventListener("input", renderArchSummary);
+  document.getElementById("f-goal").addEventListener("input", renderArchSummary);
+  renderArchSummary();
+  renderArchTopology();
+
   goStep(1);
   loadCustomDocTypes();  // 실패해도 마법사 진행을 막지 않음(내부에서 catch)
 }
