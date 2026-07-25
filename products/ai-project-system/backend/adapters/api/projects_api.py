@@ -8,14 +8,16 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+
+from backend.adapters.api.auth import require_api_key
 from pydantic import BaseModel, Field
 
 from backend.adapters.api.requirements_api import envelope, error_envelope
 from backend.adapters.persistence.project_registry import ProjectRegistry, ProjectValidationError
 
-router = APIRouter(prefix="/projects", tags=["projects"])
+router = APIRouter(prefix="/projects", tags=["projects"], dependencies=[Depends(require_api_key)])
 
 _REGISTRY_PATH = Path("data") / "projects_registry.json"
 

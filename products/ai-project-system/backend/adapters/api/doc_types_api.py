@@ -5,16 +5,17 @@
 resolve_project_data_dir()`를 그대로 재사용(신규 경로 규칙 발명 없음).
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from backend.adapters.api.auth import require_api_key
 from backend.adapters.api.requirements_api import envelope, error_envelope
 from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.doc_type_registry import DocTypeRegistry, DocTypeValidationError
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 
-router = APIRouter(prefix="/doc-types", tags=["doc-types"])
+router = APIRouter(prefix="/doc-types", tags=["doc-types"], dependencies=[Depends(require_api_key)])
 
 
 def get_doc_type_registry(project_id: str = DEFAULT_PROJECT_ID) -> DocTypeRegistry:

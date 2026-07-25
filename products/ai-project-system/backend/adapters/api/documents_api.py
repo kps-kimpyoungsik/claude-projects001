@@ -18,8 +18,10 @@ monkeypatch 테스트 격리(§DRL 패턴)를 그대로 따르기 위해 `requir
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+
+from backend.adapters.api.auth import require_api_key
 
 from backend.adapters.api import requirements_api
 from backend.adapters.persistence import project_scope
@@ -32,7 +34,7 @@ from backend.application.services.document_upload_service import (
 )
 from backend.application.services.page_render_service import render_page
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(prefix="/documents", tags=["documents"], dependencies=[Depends(require_api_key)])
 
 # [Phase 2 §8-4, W3] 원본 PDF 바이트 보관 위치. `upload_document()`가 PDF 업로드 시점에
 # 이 경로로 원본을 저장한다(2026-07-25 directive D-d65a28f2 해소 — 이전엔 마크다운만

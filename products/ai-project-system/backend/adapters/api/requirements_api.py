@@ -17,10 +17,11 @@ import threading
 from dataclasses import asdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from backend.adapters.api.auth import require_api_key
 from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.doc_type_registry import DocTypeRegistry
 from backend.adapters.persistence.document_store import DocumentStore
@@ -33,7 +34,7 @@ from backend.domain.graph.entities import Node, NodeKind
 from backend.domain.requirements.classifier import ClassificationResult
 from backend.domain.requirements.codes import DOMAIN_CODES, LAYER_CODES, REQUIREMENT_TYPES
 
-router = APIRouter(prefix="/requirements", tags=["requirements"])
+router = APIRouter(prefix="/requirements", tags=["requirements"], dependencies=[Depends(require_api_key)])
 
 # §DRL-1 — 상태변경·PII 열람 로그 append를 직렬화하는 프로세스 내 단일 락.
 _write_lock = threading.Lock()

@@ -15,7 +15,8 @@
   `graphify_engine/`·`ingestion/`·`orchestrator/`·`core_was_block/`(플랫하게 흩어져 있던
   4개 최상위 패키지)를 단일 `backend/domain·application·adapters` 3계층으로 통합하고,
   `agent-view/`+`frontend/styles/`를 `frontend/{views,styles,data}`로 병합했다. `tests/`에
-  23개 pytest로 리팩토링 전후 회귀 0 확인. Phase 0~2(등록 마법사·데이터 모델·위치추적
+  23개 pytest로 리팩토링 전후 회귀 0 확인(**2026-07-25 갱신: 현재 345개** — STEP2/3 인프라존·
+  ProjectConfig API·auth 게이트 등 후속 작업 누적). Phase 0~2(등록 마법사·데이터 모델·위치추적
   미리보기)는 구현 완료, Phase 3(agent 프롬프트·graphify 최신화)은 설계만 — 상세 이력은
   `00_DESIGN_TOC.md`(과거 경로 그대로 보존, T39 CRZ) 참조.
 
@@ -27,6 +28,11 @@ http.server`는 폐기 — API 라우트가 없어 requirements/documents 화면
 ```bash
 python -m uvicorn backend.server:app --port 8899
 # 주의(§DRL-1): --workers 지정 금지(단일 프로세스 전제, requirements_api._write_lock 참조)
+# [2026-07-25] API 인증(선택): AIPS_API_KEY 환경변수를 설정하면 모든 API 요청(정적 프론트·
+# /health 제외)에 일치하는 X-API-Key 헤더가 필요해진다. 미설정(기본값) = 인증 비활성,
+# 기존 로컬 개발 워크플로우 그대로 동작(회귀 0). 설정 시 프론트 JS의 fetch 호출도 헤더를
+# 함께 보내야 하므로, 실제 배포 시에는 프론트 fetch 래퍼 보강이 별도 필요(현재는 opt-in
+# 서버측 게이트만 구현 — backend/adapters/api/auth.py).
 # 브라우저에서 아래 화면들을 확인
 #   http://127.0.0.1:8899/                            (root -> /views/index.html 리다이렉트)
 #   http://127.0.0.1:8899/views/project-setup.html    (0차 — 프로젝트 등록 마법사)

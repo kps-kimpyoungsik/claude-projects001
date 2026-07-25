@@ -4,7 +4,9 @@
 (CRZ — 스토어 경로 결정 로직 중복 없음). 쓰기 없는 순수 조회이므로 `_write_lock` 불필요.
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from backend.adapters.api.auth import require_api_key
 
 from backend.adapters.api import requirements_api, tasks_api
 from backend.adapters.api.requirements_api import envelope
@@ -14,7 +16,7 @@ from backend.application.services.failure_pattern_analysis_service import (
     analyze_task_escalation_patterns,
 )
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+router = APIRouter(prefix="/analytics", tags=["analytics"], dependencies=[Depends(require_api_key)])
 
 
 @router.get("/failure-patterns")

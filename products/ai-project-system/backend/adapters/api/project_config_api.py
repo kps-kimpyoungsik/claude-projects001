@@ -14,10 +14,11 @@
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from backend.adapters.api.auth import require_api_key
 from backend.adapters.api.requirements_api import envelope, error_envelope
 from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.project_config_store import (
@@ -27,7 +28,7 @@ from backend.adapters.persistence.project_config_store import (
 )
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 
-router = APIRouter(prefix="/project-config", tags=["project-config"])
+router = APIRouter(prefix="/project-config", tags=["project-config"], dependencies=[Depends(require_api_key)])
 
 
 def get_project_config_store(project_id: str = DEFAULT_PROJECT_ID) -> ProjectConfigStore:
