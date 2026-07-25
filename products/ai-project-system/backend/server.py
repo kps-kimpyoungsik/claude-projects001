@@ -23,6 +23,7 @@ from backend.adapters.api.analytics_api import router as analytics_router
 from backend.adapters.api.doc_types_api import router as doc_types_router
 from backend.adapters.api.documents_api import router as documents_router
 from backend.adapters.api.health import health_envelope
+from backend.adapters.api.project_config_api import router as project_config_router
 from backend.adapters.api.projects_api import router as projects_router
 from backend.adapters.api.requirements_api import router as requirements_router
 from backend.adapters.api.tasks_api import router as tasks_router
@@ -83,6 +84,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(projects_router)
+app.include_router(project_config_router)
 app.include_router(doc_types_router)
 app.include_router(requirements_router)
 app.include_router(documents_router)
