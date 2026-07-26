@@ -168,3 +168,16 @@ th:hover { color: var(--text-primary); }
 .pii-gate-actions button { font-size: 13px; padding: 6px 14px; border-radius: var(--border-radius-base); cursor: pointer; }
 .pii-gate-actions .btn-confirm { background: var(--warn); border: none; color: #111; font-weight: 600; }
 .pii-gate-actions .btn-cancel { background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); }
+
+/* ── 공용 커스텀 다이얼로그 (alert/confirm/prompt 대체, 2026-07-26 신설) ─────────
+   frontend/js/ui-dialogs.js 전용 스타일. `.pii-gate-overlay` 패턴(뷰포트 중앙 고정
+   오버레이)을 모든 화면 공용으로 일반화한 것 — 새 색상 발명 없이 토큰만 재사용(CRZ).
+   z-index는 화면별 pii-gate-overlay(20/30)보다 항상 위에 뜨도록 1000으로 고정. */
+.ui-dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.ui-dialog-box { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--border-radius-base); padding: 20px 24px; max-width: 420px; min-width: 280px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.ui-dialog-message { font-size: 13px; color: var(--text-primary); line-height: 1.6; margin-bottom: 14px; white-space: pre-line; }
+.ui-dialog-input { display: block; width: 100%; margin-bottom: 14px; }
+.ui-dialog-actions { display: flex; gap: 8px; justify-content: center; }
+.ui-dialog-btn { font-size: 13px; padding: 6px 16px; border-radius: var(--border-radius-base); cursor: pointer; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-weight: 600; }
+.ui-dialog-btn-ok { background: var(--color-brand-primary); border-color: var(--color-brand-primary); color: #fff; }
+.ui-dialog-btn-cancel { background: transparent; }

@@ -20,21 +20,41 @@
     공통 스타일(topbar·actor-bar·empty-state·pii-gate-*)은 components.css로 이전
     (2026-07-22) — 이 화면 전용(문서목록·청크맵·팝오버 색상)만 남김.
   */
-  .actor-bar { margin-left: auto; }
-  .actor-bar input { width: 110px; font-size: 12px; }
+  /* [2026-07-26 UI/UX 재설계] topbar 재구성 — 사용자 지적: "행위자 입력이 구석에 작게
+     있어 안 보인다" + "화면이 구분 안 되고 텍스트가 주루룩 나온다"를 실제로 해결한다.
+     제목+안내문은 하나의 블록으로 묶고, 행위자 입력은 눈에 띄는 별도 pill로 분리한다
+     (components.css 고정 height:46px는 이 화면엔 좁아 auto로 로컬 override — 다른 화면
+     .topbar는 그대로 유지, CRZ 영향 없음). 새 색상 발명 없이 기존 토큰만 재사용. */
+  .topbar { height: auto; min-height: 52px; padding: 10px 18px; flex-wrap: wrap; row-gap: 8px; }
+  .topbar-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 260px; }
+  .topbar-main h1 { margin: 0; }
+  .topbar-main .hint { display: block; }
+  .actor-bar-pill {
+    margin-left: auto; flex-shrink: 0;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--hover-tint); border: 1px solid var(--border-color);
+    border-radius: 999px; padding: 6px 14px;
+  }
+  .actor-bar-pill .actor-bar-icon { font-size: 15px; line-height: 1; }
+  .actor-bar-pill .actor-bar-label { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+  .actor-bar-pill input { width: 140px; font-size: 13px; padding: 4px 8px; }
 
   .split { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 
   /* 왼쪽: 문서 목록 — GET /requirements?project_id=(실시간)에서 doc_id를 유도해 청크
      건수와 함께 표시. [2026-07-23 정리] 이전 정적 requirements.json 스냅샷 참조는
      2026-07-22에 이미 실시간 API로 전환 완료된 상태를 뒤늦게 반영(코드는 그대로, 주석만
-     stale했음 — 실측 재확인 결과 이 화면은 스냅샷을 fetch한 적이 없었음). */
-  .list-pane { width: 30%; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; }
+     stale했음 — 실측 재확인 결과 이 화면은 스냅샷을 fetch한 적이 없었음).
+     [2026-07-26] list-pane과 map-pane의 시각 구분을 border 외에 배경 톤 차이로 보강
+     (tokens.css --bg-secondary 재사용 — 신규 색상 없음, CRZ). */
+  .list-pane { width: 30%; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; background: var(--bg-secondary); }
   .list-scroll { flex: 1; overflow-y: auto; }
 
   /* [2026-07-22] 문서 등록(업로드) — plans/_plan/09_DOCUMENT_UPLOAD_PIPELINE.md §4 설계
-     그대로 구현. 새 시각 언어 없음 — 기존 action-btn 스타일 재사용(CRZ). */
-  .upload-box { padding: 12px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+     그대로 구현. 새 시각 언어 없음 — 기존 action-btn 스타일 재사용(CRZ).
+     [2026-07-26] list-pane이 --bg-secondary 톤을 갖게 되어, 이 박스를 --bg-primary
+     카드로 띄워 "업로드 영역"임을 시각적으로 분리한다. */
+  .upload-box { margin: 10px; padding: 12px; border: 1px solid var(--border-color); border-radius: var(--border-radius-base); background: var(--bg-primary); box-shadow: 0 1px 3px rgba(0,0,0,.06); flex-shrink: 0; }
   .upload-row { display: flex; gap: 6px; align-items: center; }
   .upload-row input[type="file"] { flex: 1; min-width: 0; font-size: 12px; }
   .upload-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
@@ -54,12 +74,14 @@
   .doc-row .id { font-size: 13px; font-weight: 700; }
   .doc-row .count { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
 
-  /* 오른쪽: 청크맵 */
+  /* 오른쪽: 청크맵 — [2026-07-26] map-header에 --bg-secondary 톤을 얹어 list-pane과
+     대칭되는 "헤더 영역" 구분을 주고, legend 항목을 pill 배지로 바꿔 대비를 높인다. */
   .map-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-  .map-header { padding: 12px 18px; border-bottom: 1px solid var(--border-color); }
+  .map-header { padding: 12px 18px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
   .map-header .title { font-size: 14px; font-weight: 700; }
-  .legend { display: flex; gap: 12px; margin-top: 6px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
-  .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  .legend { display: flex; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--text-primary); flex-wrap: wrap; }
+  .legend > span { display: inline-flex; align-items: center; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 999px; padding: 3px 10px; }
+  .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
   .sw-even { background: color-mix(in srgb, var(--color-brand-primary) 30%, transparent); }
   .sw-odd { background: color-mix(in srgb, var(--accent2) 30%, transparent); }
   .sw-gap { background: repeating-linear-gradient(45deg, var(--border-color), var(--border-color) 3px, var(--hover-tint) 3px, var(--hover-tint) 6px); }
@@ -96,9 +118,15 @@
       <nav class="ai-lnb" id="ai-lnb-slot"></nav>
       <div class="ai-content">
   <div class="topbar">
-    <h1>② 프로젝트 배경(문서 등록) — 제안서·사업계획서·인터뷰·녹음·메모·회의록 등</h1>
-    <span class="hint">이 화면에 올린 문서가 자동 청킹·분류되어 ③ 요구사항 관리의 REQ로 이어집니다. 왼쪽 목록에서 문서를 선택하면 청크 경계가 오른쪽에 표시됩니다.</span>
-    <span class="actor-bar">행위자(actor): <input type="text" id="actor-input" placeholder="예: hong.gildong" /></span>
+    <div class="topbar-main">
+      <h1>② 프로젝트 배경(문서 등록) — 제안서·사업계획서·인터뷰·녹음·메모·회의록 등</h1>
+      <span class="hint">이 화면에 올린 문서가 자동 청킹·분류되어 ③ 요구사항 관리의 REQ로 이어집니다. 왼쪽 목록에서 문서를 선택하면 청크 경계가 오른쪽에 표시됩니다.</span>
+    </div>
+    <div class="actor-bar-pill">
+      <span class="actor-bar-icon">👤</span>
+      <span class="actor-bar-label">행위자(actor)</span>
+      <input type="text" id="actor-input" placeholder="예: hong.gildong" />
+    </div>
   </div>
   <div class="split">
     <div class="list-pane">
@@ -143,6 +171,7 @@
     </div>
   </div>
 
+<script src="../js/ui-dialogs.js"></script>
 <script src="../js/project-scope.js"></script>
 <script src="../js/shell-loader.js"></script>
 <script>
@@ -435,7 +464,7 @@ async function loadDocTypes() {
 }
 
 async function addDocType() {
-  const label = window.prompt("추가할 문서유형 이름을 입력하세요(예: 회의록, 착수보고서):", "");
+  const label = await uiPrompt("추가할 문서유형 이름을 입력하세요(예: 회의록, 착수보고서):", "");
   if (!label || !label.trim()) return;
   try {
     const res = await fetch(`/doc-types?project_id=${encodeURIComponent(getProjectId())}`, {
@@ -449,7 +478,7 @@ async function addDocType() {
     }
     await loadDocTypes();
   } catch (e) {
-    alert(`문서유형 추가 실패: ${e.message}`);
+    await uiAlert(`문서유형 추가 실패: ${e.message}`);
   }
 }
 

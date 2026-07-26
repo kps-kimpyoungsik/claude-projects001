@@ -187,30 +187,37 @@
             }
           })
           .catch(function (e) {
-            alert("프로젝트 상태 변경 실패: " + e.message);
-            location.reload(); // 실패 시 select가 실제 서버 상태로 되돌아가도록
+            // ui-dialogs.js(우선 로드) 없이 이 셸이 단독으로 쓰이는 경우를 대비해
+            // 전역 uiAlert 부재 시 네이티브 alert로 안전 폴백(신규 의존 강제 회피).
+            var showAlert = window.uiAlert || function (m) { alert(m); return Promise.resolve(); };
+            showAlert("프로젝트 상태 변경 실패: " + e.message).then(function () {
+              location.reload(); // 실패 시 select가 실제 서버 상태로 되돌아가도록
+            });
           });
       });
     }
 
     if (addBtn) {
       addBtn.addEventListener("click", function () {
-        var name = window.prompt("새 프로젝트 이름을 입력하세요:", "");
-        if (!name || !name.trim()) return;
-        fetch("/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: name.trim() }),
-        })
-          .then(function (res) { return res.json(); })
-          .then(function (body) {
-            if (!body || body.ok === false) throw new Error((body && body.error && body.error.message) || "생성 실패");
-            window.AegisProject.setId(body.data.id);
-            location.reload();
+        var showPrompt = window.uiPrompt || function (m, d) { return Promise.resolve(window.prompt(m, d)); };
+        showPrompt("새 프로젝트 이름을 입력하세요:", "").then(function (name) {
+          if (!name || !name.trim()) return;
+          fetch("/projects", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: name.trim() }),
           })
-          .catch(function (e) {
-            alert("프로젝트 생성 실패: " + e.message);
-          });
+            .then(function (res) { return res.json(); })
+            .then(function (body) {
+              if (!body || body.ok === false) throw new Error((body && body.error && body.error.message) || "생성 실패");
+              window.AegisProject.setId(body.data.id);
+              location.reload();
+            })
+            .catch(function (e) {
+              var showAlert = window.uiAlert || function (m) { alert(m); return Promise.resolve(); };
+              showAlert("프로젝트 생성 실패: " + e.message);
+            });
+        });
       });
     }
   }

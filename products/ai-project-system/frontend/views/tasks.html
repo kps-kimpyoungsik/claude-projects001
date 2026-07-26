@@ -95,6 +95,7 @@
     </div>
   </div>
 
+<script src="../js/ui-dialogs.js"></script>
 <script src="../js/project-scope.js"></script>
 <script src="../js/shell-loader.js"></script>
 <script>
@@ -159,7 +160,7 @@ async function changeTaskStatus(taskId, fromStatus, toStatus) {
 
   if (task.needs_escalation) {
     const reasons = (task.escalation_reasons || []).join(", ") || "사유 미기재";
-    const confirmed = window.confirm(
+    const confirmed = await uiConfirm(
       `이 Task는 검토가 필요합니다(사유: ${reasons}). 검토 완료로 확인하고 계속하시겠습니까?`
     );
     if (!confirmed) return;
@@ -167,7 +168,7 @@ async function changeTaskStatus(taskId, fromStatus, toStatus) {
 
   let reason = null;
   if (REASON_REQUIRED_STATUSES.has(toStatus)) {
-    reason = window.prompt(`${toStatus} 전이 사유를 입력하세요(필수입력):`, "");
+    reason = await uiPrompt(`${toStatus} 전이 사유를 입력하세요(필수입력):`, "");
     if (!reason) return; // 취소 또는 빈 입력 — 서버도 필수로 요구하므로 전송하지 않음
   }
 
@@ -186,7 +187,7 @@ async function changeTaskStatus(taskId, fromStatus, toStatus) {
     renderSummary(ALL_TASKS);
     applyFiltersAndRender();
   } catch (e) {
-    alert(`Task 상태 변경 실패: ${e.message}`);
+    await uiAlert(`Task 상태 변경 실패: ${e.message}`);
   }
 }
 
