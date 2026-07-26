@@ -2,17 +2,26 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<title>요구사항 — 청크 위치 미리보기</title>
+<title>④ 요구사항 — 청크 위치 미리보기</title>
 <link rel="stylesheet" href="../styles/tokens.css" />
 <link rel="stylesheet" href="../styles/components.css" />
 <link rel="stylesheet" href="../styles/shell.css" />
 <style>
   /* 공통 스타일(topbar·filters·badge·actor-bar·action-btn·empty-state·pii-gate-*)은
      components.css로 이전(2026-07-22) — 이 화면 전용 레이아웃만 남김 */
+  /* [2026-07-26 UI/UX 재설계] documents.html/requirements.html과 동일 패턴 재사용(CRZ) —
+     topbar를 topbar-main(제목+안내문) + actor-bar-pill(components.css 공용)로 분리,
+     list-pane에 --bg-secondary 톤을 얹어 preview-pane과의 시각 구분을 보강한다.
+     새 색상 발명 없이 기존 토큰만 재사용. */
+  .topbar { height: auto; min-height: 52px; padding: 10px 18px; flex-wrap: wrap; row-gap: 8px; }
+  .topbar-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 260px; }
+  .topbar-main h1 { margin: 0; }
+  .topbar-main .hint { display: block; }
+
   .split { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 
   /* 왼쪽: 요구사항 목록 — 영역/유형별 필터 + 그룹핑(관리 포인트) */
-  .list-pane { width: 42%; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; }
+  .list-pane { width: 42%; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; background: var(--bg-secondary); }
   .filters { padding: 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 0; }
   .filters select { font-size: 12px; padding: 5px 7px; }
   .list-scroll { flex: 1; overflow-y: auto; }
@@ -25,7 +34,7 @@
 
   /* 오른쪽: 실시간 미리보기 */
   .preview-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-  .preview-header { padding: 12px 18px; border-bottom: 1px solid var(--border-color); }
+  .preview-header { padding: 12px 18px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
   .breadcrumb { font-size: 12px; color: var(--text-muted); }
   .breadcrumb .req-id { color: var(--brand-text); font-weight: 700; }
   .conf-line { font-size: 12px; margin-top: 4px; }
@@ -40,8 +49,6 @@
   .page-frame img.page-img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border-color); }
   .bbox-overlay { position: absolute; background: color-mix(in srgb, var(--color-brand-primary) 25%, transparent); border: 2px solid var(--color-brand-primary); pointer-events: none; }
 
-  .actor-bar { margin-left: auto; }
-  .actor-bar input { width: 110px; font-size: 12px; }
   .status-actions { margin-top: 8px; display: flex; gap: 6px; }
 </style>
 </head>
@@ -52,9 +59,15 @@
       <nav class="ai-lnb" id="ai-lnb-slot"></nav>
       <div class="ai-content">
   <div class="topbar">
-    <h1>요구사항 — 청크 위치 미리보기 (2차 설계 구현)</h1>
-    <span class="hint">목록에서 요구사항을 클릭하면 오른쪽에 원문 출처가 즉시 표시됩니다.</span>
-    <span class="actor-bar">행위자(actor): <input type="text" id="actor-input" placeholder="예: hong.gildong" /></span>
+    <div class="topbar-main">
+      <h1>④ 요구사항 — 청크 위치 미리보기 (2차 설계 구현)</h1>
+      <span class="hint">목록에서 요구사항을 클릭하면 오른쪽에 원문 출처가 즉시 표시됩니다.</span>
+    </div>
+    <div class="actor-bar-pill">
+      <span class="actor-bar-icon">👤</span>
+      <span class="actor-bar-label">행위자(actor)</span>
+      <input type="text" id="actor-input" placeholder="예: hong.gildong" />
+    </div>
   </div>
   <div class="split">
     <div class="list-pane">
