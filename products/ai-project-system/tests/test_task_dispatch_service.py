@@ -1,5 +1,6 @@
 """task_dispatch_service — compute_priority 정렬 + dispatch_tasks CLEAR/OVERLAP 분기 회귀 테스트."""
 
+from backend.adapters.persistence.agent_role_usage_log import AgentRoleUsageLog
 from backend.adapters.persistence.requirement_store import RequirementRecord, RequirementStore
 from backend.adapters.persistence.task_store import TaskStore
 from backend.application.services.agent_dispatch_resolver import AgentResolution
@@ -81,6 +82,45 @@ def test_dispatch_tasks_marks_overlap_sequential_and_clear_parallel(tmp_path):
     assert plan_by_id["B"]["dispatch_mode"] == "sequential"
     assert plan_by_id["C"]["dispatch_mode"] == "parallel"
     assert all(p["agent_resolution"].agent_command == "/aegis-security" for p in plan)
+
+
+def test_dispatch_tasks_records_agent_role_usage_log_when_injected(tmp_path):
+    """[2026-07-26 배선] 실제 배차 확정마다 AgentRoleUsageLog.record()가 호출되는지 검증
+    (agent_role_usage_log.py가 정의만 되고 실제 배차 경로에서 안 쓰이던 갭을 메운 배선)."""
+    store = TaskStore(tmp_path / "tasks.json")
+    store.create_or_update(_task(task_id="A", domain_code="SEC", impact_scope=["a.py"]))
+    store.create_or_update(_task(task_id="B", domain_code="DB", impact_scope=["b.py"]))
+
+    usage_log = AgentRoleUsageLog(tmp_path / "agent_role_usage.json")
+
+    def fake_resolve_fn(domain_code):
+        return AgentResolution(
+            domain_code=domain_code,
+            agent_command=f"/aegis-{domain_code.lower()}",
+            source="fallback_default",
+            score=None,
+            resolved_at="2026-07-26T00:00:00+00:00",
+        )
+
+    dispatch_tasks(store, all_requirements=[], resolve_fn=fake_resolve_fn, usage_log=usage_log)
+
+    entries = usage_log.list_all()
+    assert len(entries) == 2
+    assert {e.domain_code for e in entries} == {"SEC", "DB"}
+    assert all(e.resolution_source == "fallback_default" for e in entries)
+
+    # 재로드해도 append-only 로그가 그대로 남아있어야 한다(실제 파일 I/O 실측).
+    reloaded = AgentRoleUsageLog(tmp_path / "agent_role_usage.json").list_all()
+    assert len(reloaded) == 2
+
+
+def test_dispatch_tasks_without_usage_log_still_works(tmp_path):
+    """usage_log 미주입(기존 호출부·기존 테스트) 시 하위호환 — 로깅 생략, 계획은 그대로."""
+    store = TaskStore(tmp_path / "tasks.json")
+    store.create_or_update(_task(task_id="A"))
+
+    plan = dispatch_tasks(store, all_requirements=[], resolve_fn=lambda d: _resolution("/aegis-security"))
+    assert len(plan) == 1
 
 
 def _seed_requirement_store(tmp_path, req_ids):

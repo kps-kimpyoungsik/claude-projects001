@@ -13,8 +13,12 @@ NotImplementedError로 명시한다 — 추정 구현으로 채우지 않는다(
 judge 미주입 시에는 관계 판단 없이 HeadingBoundarySplitter와 동일하게 동작한다(과장 금지).
 """
 
+import logging
+
 from backend.application.ports.semantic_judge_port import SemanticJudgePort
 from backend.domain.chunking.chunk import Chunk, inject_global_context
+
+logger = logging.getLogger(__name__)
 
 
 class SemanticBoundarySplitter:
@@ -43,10 +47,13 @@ class SemanticBoundarySplitter:
 
         try:
             judgment = self._judge.judge(sections)
-        except Exception:
+        except Exception as exc:
             # LLM 판단 실패(서비스 다운·타임아웃 등)는 업로드 파이프라인 전체를 막지 않는다 —
             # 관계정보 없이 헤딩 기준 분할 결과만 정직하게 반환한다(T99 AIOS 우아한 성능저하,
             # meta.degraded는 이 결과를 소비하는 상위 계층이 필요시 표기).
+            # [2026-07-26 배선] 조용한 폴백이 아니라 최소 한 줄 로그는 남긴다 — 동작(폴백)
+            # 자체는 그대로 유지, 관측 가능성만 추가(T98 AIP — 무로깅 실패 은폐 금지).
+            logger.warning("semantic judge 실패 — heading 기준 폴백: %s", exc)
             return sections
 
         for rel in judgment.relationships:

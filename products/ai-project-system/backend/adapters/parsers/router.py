@@ -48,6 +48,13 @@ FORMAT_STRATEGY = {
 
 
 class IngestionRouter:
+    """[2026-07-26 실측 확인] 이 클래스는 현재 미사용 — 실제 업로드는
+    `backend/application/services/document_upload_service.py`가 처리한다(확장자별 실제
+    파서 호출도 그쪽 경로에서 이뤄짐). 향후 재사용 가능성이 있는 유틸이라 보존만 하며,
+    새 어댑터 연결처가 필요할 때 이 클래스를 실제 배차 경로로 승격하려면
+    `document_upload_service.py`가 이 `route()`를 호출하도록 바꾸면 된다(현재는 그 연결이
+    없다는 사실을 정직하게 남긴다, T98 AIP)."""
+
     def __init__(self, adapters: dict[str, Callable[[str], NormalizedDocument]] | None = None):
         # adapters: strategy_name -> 실제 파서 함수. 미주입 시 전량 NotImplementedError.
         self._adapters = adapters or {}

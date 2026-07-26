@@ -44,6 +44,7 @@ def dispatch_tasks(
     task_store: TaskStorePort,
     all_requirements: list[RequirementRecord],
     resolve_fn,
+    usage_log=None,
 ) -> list[dict]:
     """배차 계획을 세운다 (설계서 §4 배차 흐름 그대로).
 
@@ -59,6 +60,13 @@ def dispatch_tasks(
     resolve_fn: (domain_code: str) -> AgentResolution — 실제로는
     agent_dispatch_resolver.resolve_agent_for_domain을 부분 적용해서 넘긴다(포트 주입).
 
+    usage_log: [2026-07-26 배선] `AgentRoleUsageLog` 인스턴스(선택) — 주입되면 이 함수가
+    실제로 배차를 확정하는 지점(각 task별 resolve_fn 호출 직후)마다
+    `record(domain_code, agent_command, resolution_source, resolved_at)`를 호출해
+    "실제로 어떤 agent가 어떤 영역에 쓰였는지"의 ground-truth 이력을 남긴다. 미주입
+    시(기존 호출부·테스트) 로깅을 생략한다 — 순수 계획 함수라는 기존 계약을 깨지 않는다
+    (하위호환, CRZ — 새 저장 포맷 발명 없이 기존 `AgentRoleUsageLog` 인터페이스 재사용).
+
     반환값은 실행 계획(dict 리스트)이지 실행 결과가 아니다 — Agent() 호출은 하지 않는다.
     """
     tasks = task_store.list_all()
@@ -73,6 +81,13 @@ def dispatch_tasks(
     plan = []
     for task in tasks:
         resolution = resolve_fn(task.domain_code)
+        if usage_log is not None:
+            usage_log.record(
+                domain_code=resolution.domain_code,
+                agent_command=resolution.agent_command,
+                resolution_source=resolution.source,
+                resolved_at=resolution.resolved_at,
+            )
         is_overlap = task.task_id in overlapping_ids
         plan.append(
             {
