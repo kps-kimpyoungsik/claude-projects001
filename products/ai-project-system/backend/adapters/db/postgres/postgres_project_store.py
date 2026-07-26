@@ -26,6 +26,8 @@ def _to_project(row: dict) -> Project:
         name=row["data"]["name"],
         status=row["status"],
         created_at=datetime.fromisoformat(row["data"]["created_at"]),
+        start_date=row["data"].get("start_date"),
+        end_date=row["data"].get("end_date"),
     )
 
 
@@ -60,7 +62,7 @@ class PostgresProjectStore(ProjectStorePort):
                 return project
         return None
 
-    def create(self, name: str) -> Project:
+    def create(self, name: str, start_date: str | None = None, end_date: str | None = None) -> Project:
         name = name.strip()
         if not name:
             raise ProjectValidationError("프로젝트명은 비어 있을 수 없습니다")
@@ -78,8 +80,12 @@ class PostgresProjectStore(ProjectStorePort):
             project = Project(
                 id=project_id, name=name, status="IMPLEMENTING",
                 created_at=datetime.now(timezone.utc),
+                start_date=start_date, end_date=end_date,
             )
-            data = {"id": project.id, "name": project.name, "created_at": project.created_at.isoformat()}
+            data = {
+                "id": project.id, "name": project.name, "created_at": project.created_at.isoformat(),
+                "start_date": project.start_date, "end_date": project.end_date,
+            }
             cur.execute(
                 "INSERT INTO projects (project_id, status, data) VALUES (%s, %s, %s)",
                 (project.id, project.status, psycopg2_json(data)),
@@ -123,6 +129,53 @@ class PostgresProjectStore(ProjectStorePort):
                 return project
 
         raise ProjectValidationError(f"존재하지 않는 프로젝트입니다: {project_id}")
+
+    def update_fields(
+        self,
+        project_id: str,
+        name: str | None = None,
+        start_date: str | None = ...,
+        end_date: str | None = ...,
+    ) -> Project:
+        """[2026-07-26 고도화] JSON 어댑터(`ProjectRegistry.update_fields`)와 동일 계약 —
+        ⚠ 검증 미확정(모듈 상단 경고 그대로 승계, 실제 PostgreSQL 없이 작성)."""
+        conn = self._connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT status, data FROM projects WHERE project_id = %s", (project_id,))
+            row = cur.fetchone()
+            if not row and project_id == DEFAULT_PROJECT_ID:
+                row = {
+                    "status": "IMPLEMENTING",
+                    "data": {
+                        "id": DEFAULT_PROJECT_ID, "name": DEFAULT_PROJECT_NAME,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                }
+            if not row:
+                raise ProjectValidationError(f"존재하지 않는 프로젝트입니다: {project_id}")
+
+            data = dict(row["data"])
+            if name is not None:
+                name = name.strip()
+                if not name:
+                    raise ProjectValidationError("프로젝트명은 비어 있을 수 없습니다")
+                data["name"] = name
+            if start_date is not ...:
+                data["start_date"] = start_date
+            if end_date is not ...:
+                data["end_date"] = end_date
+
+            cur.execute(
+                "INSERT INTO projects (project_id, status, data) VALUES (%s, %s, %s) "
+                "ON CONFLICT (project_id) DO UPDATE SET data = EXCLUDED.data",
+                (project_id, row["status"], psycopg2_json(data)),
+            )
+        conn.commit()
+        return Project(
+            id=project_id, name=data["name"], status=row["status"],
+            created_at=datetime.fromisoformat(data["created_at"]),
+            start_date=data.get("start_date"), end_date=data.get("end_date"),
+        )
 
 
 def psycopg2_json(data: dict):

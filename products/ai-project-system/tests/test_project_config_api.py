@@ -52,6 +52,31 @@ def test_save_project_config_empty_areas_returns_422(client):
     assert res.json()["error"]["code"] == "AEGIS-VALIDATION"
 
 
+def test_put_project_config_updates_in_place_on_second_call(client):
+    """[2026-07-26 고도화 검증] `PUT /project-config`는 create/update 구분 없는 전체
+    덮어쓰기다 — 이 테스트가 그 update-in-place 동작을 명시적으로 확인한다(투자 지시
+    4번: create -> PUT 1회 -> 다른 goal로 PUT 재호출 -> GET으로 최신값 확인)."""
+    test_client, _ = client
+    base_body = {
+        "project_name": "프로젝트 X",
+        "goal": "최초 목표",
+        "selected_areas": ["WEB"],
+        "actor": "pm@example.com",
+    }
+
+    first = test_client.put("/project-config", json=base_body)
+    assert first.status_code == 200
+    assert first.json()["data"]["config"]["goal"] == "최초 목표"
+
+    second = test_client.put("/project-config", json={**base_body, "goal": "변경된 목표"})
+    assert second.status_code == 200
+    assert second.json()["data"]["config"]["goal"] == "변경된 목표"
+
+    loaded = test_client.get("/project-config").json()["data"]["config"]
+    assert loaded["goal"] == "변경된 목표"
+    assert loaded["project_name"] == "프로젝트 X"
+
+
 def test_save_project_config_infra_policy_violation_returns_422(client):
     test_client, _ = client
     res = test_client.put(

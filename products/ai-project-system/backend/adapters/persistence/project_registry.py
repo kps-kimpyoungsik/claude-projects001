@@ -15,6 +15,7 @@ requirements_store.json` 등 기존 데이터가 그대로 "기본 프로젝트"
 """
 
 import json
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,7 +29,21 @@ DEFAULT_PROJECT_NAME = "기본 프로젝트"
 # `backend/domain/entities/project.py`의 `status` 필드 주석(WAITING/IMPLEMENTING/VERIFIED)을
 # 실제로 강제하는 값 집합 — 지금까지 이 필드는 생성 시 "IMPLEMENTING"으로 고정될 뿐 전이
 # 수단이 전혀 없었다(2026-07-23 실측 확인: projects_api.py에 상태 변경 엔드포인트 없음).
-PROJECT_STATUSES = {"WAITING", "IMPLEMENTING", "VERIFIED"}
+# [2026-07-26 고도화] ON_HOLD(보류)·ARCHIVED(삭제 — soft-delete, 물리 삭제 금지) 추가.
+# ARCHIVED는 "삭제" 의미의 상태 라벨일 뿐이며, 레코드 자체는 그대로 파일에 남는다 — 기본
+# 활성 뷰(list_all 등)에서 제외하는 필터링은 호출부(향후 프런트/트랙)의 책임으로 남긴다
+# (이번 변경 범위는 상태값 허용까지 — 과잉 확장 금지, T98 AIP).
+PROJECT_STATUSES = {"WAITING", "IMPLEMENTING", "VERIFIED", "ON_HOLD", "ARCHIVED"}
+
+# [2026-07-26 고도화] start_date/end_date 형식 검증 — "YYYY-MM-DD" ISO 날짜 문자열만 허용.
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _validate_date(label: str, value: str | None) -> None:
+    if value is None:
+        return
+    if not _DATE_RE.fullmatch(value):
+        raise ProjectValidationError(f"{label} 형식이 올바르지 않습니다(YYYY-MM-DD 필요): {value!r}")
 
 
 class ProjectValidationError(ValueError):
@@ -41,15 +56,22 @@ def _to_record(project: Project) -> dict:
         "name": project.name,
         "status": project.status,
         "created_at": project.created_at.isoformat(),
+        "start_date": project.start_date,
+        "end_date": project.end_date,
     }
 
 
 def _from_record(record: dict) -> Project:
+    # [2026-07-26 고도화] start_date/end_date는 이 필드가 생기기 전 저장된 기존 레코드에는
+    # 아예 키가 없다 — `.get(..., None)`으로 하위호환(구 레코드는 두 필드 모두 None으로
+    # 로드되고, 이는 도메인 엔티티의 기본값과 동일해 즉시 재저장해도 회귀 없음).
     return Project(
         id=record["id"],
         name=record["name"],
         status=record["status"],
         created_at=datetime.fromisoformat(record["created_at"]),
+        start_date=record.get("start_date"),
+        end_date=record.get("end_date"),
     )
 
 
@@ -94,10 +116,17 @@ class ProjectRegistry(ProjectStorePort):
                 return project
         return None
 
-    def create(self, name: str) -> Project:
+    def create(
+        self,
+        name: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> Project:
         name = name.strip()
         if not name:
             raise ProjectValidationError("프로젝트명은 비어 있을 수 없습니다")
+        _validate_date("start_date", start_date)
+        _validate_date("end_date", end_date)
 
         records = self._load_raw()
         existing_ids = {r["id"] for r in records} | {DEFAULT_PROJECT_ID}
@@ -112,6 +141,8 @@ class ProjectRegistry(ProjectStorePort):
             name=name,
             status="IMPLEMENTING",
             created_at=datetime.now(timezone.utc),
+            start_date=start_date,
+            end_date=end_date,
         )
         records.append(_to_record(project))
         self._save_raw(records)
@@ -145,5 +176,56 @@ class ProjectRegistry(ProjectStorePort):
             records.append(_to_record(project))
             self._save_raw(records)
             return project
+
+        raise ProjectValidationError(f"존재하지 않는 프로젝트입니다: {project_id}")
+
+    def update_fields(
+        self,
+        project_id: str,
+        name: str | None = None,
+        start_date: str | None = ...,
+        end_date: str | None = ...,
+    ) -> Project:
+        """[2026-07-26 고도화] `name`/`start_date`/`end_date`만 갱신하는 부분 업데이트 —
+        `status`는 `update_status()`가 이미 전담하므로 이 메서드는 건드리지 않는다(단일
+        책임 유지, CRZ). `start_date`/`end_date`는 "값을 지정하지 않음"(그대로 유지)과
+        "명시적으로 null로 지움"을 구분해야 하므로 sentinel(`...`)을 기본값으로 쓴다 —
+        `None`을 기본값으로 두면 "지우기"와 "미지정"을 구분할 수 없다."""
+        if name is not None:
+            name = name.strip()
+            if not name:
+                raise ProjectValidationError("프로젝트명은 비어 있을 수 없습니다")
+        if start_date is not ...:
+            _validate_date("start_date", start_date)
+        if end_date is not ...:
+            _validate_date("end_date", end_date)
+
+        records = self._load_raw()
+        for record in records:
+            if record["id"] == project_id:
+                if name is not None:
+                    record["name"] = name
+                if start_date is not ...:
+                    record["start_date"] = start_date
+                if end_date is not ...:
+                    record["end_date"] = end_date
+                self._save_raw(records)
+                return _from_record(record)
+
+        if project_id == DEFAULT_PROJECT_ID:
+            # update_status()와 동일한 materialize 패턴 — DEFAULT는 파일에 없을 수 있다.
+            base = Project(
+                id=DEFAULT_PROJECT_ID, name=DEFAULT_PROJECT_NAME,
+                status="IMPLEMENTING", created_at=datetime.now(timezone.utc),
+            )
+            if name is not None:
+                base.name = name
+            if start_date is not ...:
+                base.start_date = start_date
+            if end_date is not ...:
+                base.end_date = end_date
+            records.append(_to_record(base))
+            self._save_raw(records)
+            return base
 
         raise ProjectValidationError(f"존재하지 않는 프로젝트입니다: {project_id}")

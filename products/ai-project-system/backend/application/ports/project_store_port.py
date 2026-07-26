@@ -27,9 +27,19 @@ class ProjectStorePort(ABC):
         pass
 
     @abstractmethod
-    def create(self, name: str) -> Project:
+    def create(self, name: str, start_date: str | None = None, end_date: str | None = None) -> Project:
         pass
 
     @abstractmethod
     def update_status(self, project_id: str, status: str) -> Project:
+        pass
+
+    @abstractmethod
+    def update_fields(
+        self,
+        project_id: str,
+        name: str | None = None,
+        start_date: str | None = ...,
+        end_date: str | None = ...,
+    ) -> Project:
         pass
