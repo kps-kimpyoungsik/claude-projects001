@@ -45,6 +45,20 @@ select option {
 .actor-bar { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
 .actor-bar input { width: 140px; font-size: 13px; }
 
+/* ── 행위자(actor) 강조 pill (2026-07-26 documents.html에서 공용화 — 2개 이상 화면이
+   쓰므로 로컬 중복정의 대신 여기 승격, CRZ). 밋밋한 `.actor-bar` 한 줄 텍스트 대신
+   아이콘+라벨+입력을 눈에 띄는 pill로 묶는다. 화면별 배치(topbar 우측 정렬 vs 단독
+   블록)는 각 view의 로컬 <style>에서 margin/display만 오버라이드해서 맞춘다. */
+.actor-bar-pill {
+  margin-left: auto; flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--hover-tint); border: 1px solid var(--border-color);
+  border-radius: 999px; padding: 6px 14px;
+}
+.actor-bar-pill .actor-bar-icon { font-size: 15px; line-height: 1; }
+.actor-bar-pill .actor-bar-label { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+.actor-bar-pill input { width: 140px; font-size: 13px; padding: 4px 8px; }
+
 /* ── 상단 바 (문서/미리보기/등록 화면 공통) ───────────────────────────────────── */
 .topbar { height: 46px; display: flex; align-items: center; padding: 0 18px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; gap: 10px; }
 .topbar h1 { font-size: 14px; font-weight: 700; margin: 0; }

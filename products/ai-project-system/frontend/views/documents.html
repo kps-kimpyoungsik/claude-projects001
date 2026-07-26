@@ -29,15 +29,8 @@
   .topbar-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 260px; }
   .topbar-main h1 { margin: 0; }
   .topbar-main .hint { display: block; }
-  .actor-bar-pill {
-    margin-left: auto; flex-shrink: 0;
-    display: flex; align-items: center; gap: 8px;
-    background: var(--hover-tint); border: 1px solid var(--border-color);
-    border-radius: 999px; padding: 6px 14px;
-  }
-  .actor-bar-pill .actor-bar-icon { font-size: 15px; line-height: 1; }
-  .actor-bar-pill .actor-bar-label { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
-  .actor-bar-pill input { width: 140px; font-size: 13px; padding: 4px 8px; }
+  /* .actor-bar-pill 자체는 components.css로 승격(2026-07-26, requirements.html도 재사용) —
+     여기서는 이 화면의 topbar가 flex-row라 우측 정렬이 자연히 되므로 추가 오버라이드 없음. */
 
   .split { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 

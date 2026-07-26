@@ -11,12 +11,26 @@
   .req-page-body { padding: 24px; }
   h1 { font-size: 20px; margin-bottom: 4px; }
   p.subtitle { color: var(--text-muted); font-size: 14px; margin-top: 0; }
-  .actor-bar { margin-bottom: 10px; }
+
+  /* [2026-07-26 UI/UX 재설계] documents.html과 동일 패턴 재사용(CRZ, 화면마다 다른 스타일
+     발명 금지) — 밋밋한 한 줄 `.actor-bar` 대신 눈에 띄는 pill(components.css 공용 정의).
+     이 화면은 topbar flex-row가 없는 단일 컬럼 레이아웃이라, pill을 독립 블록으로 두기
+     위해 display만 inline-flex로 로컬 오버라이드(margin-left:auto는 flex 부모가 없어 무해). */
+  .actor-bar-pill { display: inline-flex; margin: 0 0 16px; }
+
+  /* [2026-07-26 UI/UX 재설계] 사용자 지적("텍스트가 주루룩 나온다") 반영 — documents.html의
+     list-pane(--bg-secondary)/upload-box(--bg-primary) 톤 차이 카드 패턴을 그대로 재사용해
+     "보조 도구·인사이트" 묶음과 "메인 데이터(필터+테이블)" 묶음을 시각적으로 분리한다.
+     새 색상 발명 없음 — 기존 토큰만 사용(CRZ). */
+  .req-section { border: 1px solid var(--border-color); border-radius: var(--border-radius-base); padding: 16px 18px; margin-bottom: 16px; }
+  .req-section > *:last-child { margin-bottom: 0 !important; }
+  .req-section-tools { background: var(--bg-secondary); }
+  .req-section-main { background: var(--bg-primary); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 
   /* [2026-07-23 고도화] 단건 요구사항 등록 — 문서 업로드 없이 애자일 중간 유입 요구사항을
      바로 채번하는 폼(사용자 지시: "단건 등록 프롬프트가 될 수도 있어서"). */
   .manual-req-panel { margin-bottom: 14px; }
-  .manual-req-form { margin-top: 8px; border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; max-width: 640px; }
+  .manual-req-form { margin-top: 8px; border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; max-width: 640px; background: var(--bg-primary); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
   .manual-req-form textarea { width: 100%; min-height: 56px; resize: vertical; margin-bottom: 8px; }
   .manual-req-row { display: flex; gap: 8px; align-items: center; }
   .manual-req-row select { flex: 1; }
@@ -25,13 +39,25 @@
   .manual-req-status.err { color: var(--danger-text); }
 
   /* [Phase 6.1] 실패 패턴 리포트 패널 — GET /analytics/failure-patterns 표면화.
-     API 없이(정적서버 등) 열렸거나 패턴이 0건이면 패널 자체를 숨긴다(빈 상자 노출 금지). */
-  .failure-patterns-panel { margin: 4px 0 20px; border: 1px solid var(--border-color); border-radius: var(--border-radius-base); padding: 12px 16px; }
+     API 없이(정적서버 등) 열렸거나 패턴이 0건이면 패널 자체를 숨긴다(빈 상자 노출 금지).
+     [2026-07-26] req-section-tools(--bg-secondary) 안에 놓이므로 --bg-primary로 대비. */
+  .failure-patterns-panel { margin: 12px 0 0; border: 1px solid var(--border-color); border-radius: var(--border-radius-base); padding: 12px 16px; background: var(--bg-primary); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
   .failure-patterns-panel h2 { font-size: 14px; margin: 0 0 8px; color: var(--text-muted); font-weight: 700; }
   .fp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .fp-table th, .fp-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border-color); }
   .fp-table th { color: var(--text-muted); font-weight: 600; }
   .fp-count { display: inline-block; min-width: 22px; text-align: center; border-radius: 999px; padding: 1px 6px; font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+
+  /* [2026-07-26 UI/UX 재설계] 테이블 14컬럼 정보밀도 완화(옵션 A 채택) — 우선순위 낮은
+     3개 컬럼(문서유형신뢰도·영역신뢰도·출처)을 기본 행에서 빼고, 행 앞 토글(▸)로 펼치는
+     상세 패널로 옮긴다. 정보 손실 없음(어디서든 확인 가능) — 단순 삭제 아님. */
+  .th-expand { width: 28px; }
+  .expand-cell { width: 28px; text-align: center; }
+  .row-expand-btn { border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 4px; line-height: 1; }
+  .row-expand-btn:hover { background: var(--hover-tint); color: var(--text-primary); }
+  .req-detail-row td { background: var(--hover-tint); border-bottom: 1px solid var(--border-color); padding: 10px 14px; }
+  .req-detail-grid { display: flex; gap: 28px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+  .req-detail-label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
 
   /* §10-5 — 배정 agent · 작업상태(색상은 components.css .work-* 재사용, 이 화면만 있는
      NOT_DISPATCHED 회색톤 오버라이드만 유지) */
@@ -77,55 +103,58 @@
 
   <div class="summary-row" id="summary-row"></div>
 
-  <div class="failure-patterns-panel" id="failure-patterns-panel" style="display:none;"></div>
-
-  <div class="manual-req-panel" id="manual-req-panel">
-    <button class="action-btn" id="manual-req-toggle-btn" onclick="toggleManualReqForm()">+ 단건 요구사항 등록</button>
-    <div class="manual-req-form" id="manual-req-form" style="display:none;">
-      <textarea id="manual-req-description" placeholder="요구사항 설명(예: 회의 중 나온 요청 — 로그인 화면에 소셜로그인 버튼 추가)"></textarea>
-      <div class="manual-req-row">
-        <select id="manual-req-doc-type"></select>
-        <select id="manual-req-area"></select>
-        <button class="action-btn btn-accept" onclick="submitManualRequirement()">등록</button>
-      </div>
-      <div class="manual-req-status" id="manual-req-status"></div>
-    </div>
-  </div>
-
-  <div class="actor-bar">
-    행위자(actor):
+  <div class="actor-bar-pill">
+    <span class="actor-bar-icon">👤</span>
+    <span class="actor-bar-label">행위자(actor)</span>
     <input type="text" id="actor-input" placeholder="예: hong.gildong" />
   </div>
 
-  <div class="filters">
-    <input type="text" id="search" placeholder="설명·REQ ID 검색..." />
-    <select id="filter-doc-type"><option value="">전체 문서유형</option></select>
-    <select id="filter-area"><option value="">전체 영역</option></select>
-    <select id="filter-status"><option value="">전체 상태</option></select>
+  <div class="req-section req-section-tools">
+    <div class="manual-req-panel" id="manual-req-panel">
+      <button class="action-btn" id="manual-req-toggle-btn" onclick="toggleManualReqForm()">+ 단건 요구사항 등록</button>
+      <div class="manual-req-form" id="manual-req-form" style="display:none;">
+        <textarea id="manual-req-description" placeholder="요구사항 설명(예: 회의 중 나온 요청 — 로그인 화면에 소셜로그인 버튼 추가)"></textarea>
+        <div class="manual-req-row">
+          <select id="manual-req-doc-type"></select>
+          <select id="manual-req-area"></select>
+          <button class="action-btn btn-accept" onclick="submitManualRequirement()">등록</button>
+        </div>
+        <div class="manual-req-status" id="manual-req-status"></div>
+      </div>
+    </div>
+
+    <div class="failure-patterns-panel" id="failure-patterns-panel" style="display:none;"></div>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th data-key="req_id">REQ ID</th>
-        <th data-key="doc_type_code">문서유형</th>
-        <th data-key="area_code">영역</th>
-        <th data-key="layer_code">계층</th>
-        <th data-key="requirement_type">유형</th>
-        <th data-key="description">설명</th>
-        <th data-key="doc_type_confidence">문서유형 신뢰도</th>
-        <th data-key="area_confidence">영역 신뢰도</th>
-        <th data-key="lifecycle_status">상태</th>
-        <th data-key="design_gate_status">시안게이트</th>
-        <th data-key="source_ref">출처(source_ref)</th>
-        <th data-key="assigned_agent_command">배정 agent</th>
-        <th data-key="work_status">작업상태</th>
-        <th>액션</th>
-      </tr>
-    </thead>
-    <tbody id="req-tbody"></tbody>
-  </table>
-  <div class="empty-state" id="empty-state" style="display:none;">표시할 요구사항이 없습니다(필터 조건 확인).</div>
+  <div class="req-section req-section-main">
+    <div class="filters">
+      <input type="text" id="search" placeholder="설명·REQ ID 검색..." />
+      <select id="filter-doc-type"><option value="">전체 문서유형</option></select>
+      <select id="filter-area"><option value="">전체 영역</option></select>
+      <select id="filter-status"><option value="">전체 상태</option></select>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="th-expand" aria-label="상세보기"></th>
+          <th data-key="req_id">REQ ID</th>
+          <th data-key="doc_type_code">문서유형</th>
+          <th data-key="area_code">영역</th>
+          <th data-key="layer_code">계층</th>
+          <th data-key="requirement_type">유형</th>
+          <th data-key="description">설명</th>
+          <th data-key="lifecycle_status">상태</th>
+          <th data-key="design_gate_status">시안게이트</th>
+          <th data-key="assigned_agent_command">배정 agent</th>
+          <th data-key="work_status">작업상태</th>
+          <th>액션</th>
+        </tr>
+      </thead>
+      <tbody id="req-tbody"></tbody>
+    </table>
+    <div class="empty-state" id="empty-state" style="display:none;">표시할 요구사항이 없습니다(필터 조건 확인).</div>
+  </div>
         </div>
       </div>
     </div>
@@ -365,19 +394,19 @@ function applyFiltersAndRender() {
   });
 
   const tbody = document.getElementById("req-tbody");
-  tbody.innerHTML = rows.map(r => `
+  tbody.innerHTML = rows.map((r, idx) => {
+    const detailId = `req-detail-${idx}`;
+    return `
     <tr>
+      <td class="expand-cell"><button class="row-expand-btn" type="button" aria-expanded="false" aria-controls="${detailId}" title="신뢰도·출처 상세보기" onclick="toggleRowDetail(this, '${detailId}')">▸</button></td>
       <td><strong class="req-id-link" onclick="goToPreview('${r.req_id}')" title="청크 위치 미리보기로 이동">${r.req_id}</strong></td>
       <td><span class="badge badge-doc">문서유형: ${r.doc_type_code}</span></td>
       <td><span class="badge badge-area">영역: ${r.area_code}</span></td>
       <td>${renderAxisBadge("badge-layer", "계층", r.layer_code)}</td>
       <td>${renderAxisBadge("badge-type", "유형", r.requirement_type)}</td>
       <td class="desc-cell">${r.description.replace(/</g, "&lt;")}</td>
-      <td>${renderConfidence(r.doc_type_confidence)}</td>
-      <td>${renderConfidence(r.area_confidence)}</td>
       <td><span class="badge-status status-${r.lifecycle_status}">${r.lifecycle_status}</span></td>
       <td>${renderGateBadge(r.design_gate_status)}</td>
-      <td class="source-ref">${r.source_ref}</td>
       <td class="agent-cell ${r.assigned_agent_command ? '' : 'unassigned'}">${r.assigned_agent_command || '미배정'}</td>
       <td><span class="badge-work work-${r.work_status || 'NOT_DISPATCHED'}">${r.work_status || 'NOT_DISPATCHED'}</span></td>
       <td class="actions-cell">
@@ -388,9 +417,31 @@ function applyFiltersAndRender() {
         <button class="action-btn btn-task" onclick="generateTask('${r.req_id}')" ${(r.lifecycle_status === "REJECTED" || r.lifecycle_status === "WITHDRAWN") ? "disabled" : ""} title="이 요구사항을 근거로 AI 개발 Task를 생성합니다(재호출 안전 — 이미 있으면 기존 Task를 안내)">Task 생성</button>
       </td>
     </tr>
-  `).join("");
+    <tr class="req-detail-row" id="${detailId}" style="display:none;">
+      <td></td>
+      <td colspan="11">
+        <div class="req-detail-grid">
+          <div><span class="req-detail-label">문서유형 신뢰도</span>${renderConfidence(r.doc_type_confidence)}</div>
+          <div><span class="req-detail-label">영역 신뢰도</span>${renderConfidence(r.area_confidence)}</div>
+          <div><span class="req-detail-label">출처(source_ref)</span><span class="source-ref">${r.source_ref}</span></div>
+        </div>
+      </td>
+    </tr>
+  `;
+  }).join("");
 
   document.getElementById("empty-state").style.display = rows.length ? "none" : "block";
+}
+
+// [2026-07-26 UI/UX 재설계] 14컬럼 정보밀도 완화(옵션 A) — 우선순위 낮은 3개 컬럼
+// (문서유형신뢰도·영역신뢰도·출처)을 기본 행에서 감추고 이 토글로 펼친다(정보 손실 없음).
+function toggleRowDetail(btn, detailId) {
+  const row = document.getElementById(detailId);
+  if (!row) return;
+  const opening = row.style.display === "none";
+  row.style.display = opening ? "table-row" : "none";
+  btn.textContent = opening ? "▾" : "▸";
+  btn.setAttribute("aria-expanded", opening ? "true" : "false");
 }
 
 // [2026-07-23 고도화] 단건 요구사항 등록 — 사용자 지시: "중간 애자일 방식 요구사항이
