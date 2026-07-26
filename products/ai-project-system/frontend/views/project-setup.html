@@ -2,19 +2,27 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<title>프로젝트 등록 — 분야 선택 마법사</title>
+<title>① 프로젝트 등록 — 분야 선택 마법사</title>
 <link rel="stylesheet" href="../styles/tokens.css" />
 <link rel="stylesheet" href="../styles/components.css" />
 <link rel="stylesheet" href="../styles/shell.css" />
 <style>
   /* 공통 스타일(reset·body·topbar·btn)은 components.css로 이전(2026-07-22) — 마법사
      전용(사이드바·스텝·태그입력·카드선택) 레이아웃만 남김 */
-  .topbar { height: 48px; padding: 0 20px; }
-  .topbar h1 { font-size: 15px; }
+  /* [2026-07-26 UI/UX 재설계] documents/requirements/preview.html과 동일한 topbar-main
+     패턴 적용 — 제목+안내문을 하나의 블록으로 묶어 시각적 위계를 준다(components.css
+     고정 height:46px는 이 화면엔 좁아 auto로 로컬 override, 다른 화면 .topbar는 불변,
+     CRZ). 이 화면은 단일 사용자 마법사라 actor-bar-pill 개념이 없다(grep 확인 — 발명 안 함). */
+  .topbar { height: auto; min-height: 52px; padding: 10px 20px; }
+  .topbar-main { display: flex; flex-direction: column; gap: 2px; }
+  .topbar-main h1 { margin: 0; font-size: 18px; }
+  .topbar-main .hint { display: block; }
   .wiz-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 
-  /* workbase wizard.html 벤치마킹: 사이드바 단계 도트 */
-  .sidebar { width: 220px; border-right: 1px solid rgba(128,128,128,.3); padding: 14px 10px; overflow-y: auto; flex-shrink: 0; }
+  /* workbase wizard.html 벤치마킹: 사이드바 단계 도트
+     [2026-07-26] documents.html list-pane과 동일하게 --bg-secondary 톤을 얹어 .content와
+     톤 대비를 만든다(신규 색상 없음, 기존 arch-group 카드에도 이미 쓰인 토큰 재사용). */
+  .sidebar { width: 220px; border-right: 1px solid rgba(128,128,128,.3); padding: 14px 10px; overflow-y: auto; flex-shrink: 0; background: var(--bg-secondary); }
   .step-item { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: var(--border-radius-base); cursor: pointer; margin-bottom: 2px; }
   .step-item:hover { background: rgba(128,128,128,.1); }
   .step-item.active { background: color-mix(in srgb, var(--color-brand-primary) 12%, transparent); }
@@ -34,7 +42,10 @@
   /* [2026-07-25 반응형] 고정 640px 캡이 STEP2 카드가 화면 폭과 무관하게 항상 2~3열로만
      줄바꿈되던 근본원인이었다(실사용 피드백). 뷰포트에 비례해 넓어지되 초광폭 모니터에서
      텍스트 줄 길이가 과도해지지 않도록 상한만 유지한다. */
-  .panel { display: none; max-width: min(1100px, 94%); }
+  /* [2026-07-26] panel을 콘텐츠 배경(--bg-primary)과 구분되는 카드로 승격 — sidebar에
+     이미 적용한 --bg-secondary 톤을 재사용해 "현재 단계"가 배경에 묻히지 않게 한다
+     (arch-group과 동일 토큰 조합, 신규 색상 없음). */
+  .panel { display: none; max-width: min(1100px, 94%); background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px; padding: 22px 26px; }
   .panel.active { display: block; }
   h2 { font-size: 20px; margin: 0 0 4px; }
   .panel p.desc { color: var(--text-muted); font-size: 13px; margin: 0 0 20px; }
@@ -98,7 +109,10 @@
 
   /* [W7 2026-07-25 §8-7-A] 아키텍처 요약 시각화 — 원형 게이지 + SVG 토폴로지 */
   .arch-summary { display: flex; gap: 14px; flex-wrap: wrap; margin: 16px 0 20px; }
-  .arch-group { flex: 1 1 220px; min-width: 220px; border: 1px solid var(--border-color); border-top: 2px solid var(--color-brand-primary); border-radius: 10px; padding: 14px 16px; background: var(--bg-secondary); }
+  /* [2026-07-26 harmonizing tweak] .panel이 이제 --bg-secondary 카드가 되어(위 참조),
+     그 안에 있는 이 하위 카드는 --bg-primary로 뒤집어야 계속 도드라져 보인다(원래
+     대비 관계 유지 목적, 신규 색상 없음). */
+  .arch-group { flex: 1 1 220px; min-width: 220px; border: 1px solid var(--border-color); border-top: 2px solid var(--color-brand-primary); border-radius: 10px; padding: 14px 16px; background: var(--bg-primary); }
   .arch-group h3 { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--brand-text); margin: 0 0 12px; }
   .arch-group h3::before { content: "\203A\A0"; }
   .arch-gauge-row { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -106,7 +120,7 @@
     background: conic-gradient(var(--ring) calc(var(--pct) * 1%), var(--hover-tint) 0);
     box-shadow: 0 0 0 1px var(--border-color), 0 0 14px color-mix(in srgb, var(--ring) 35%, transparent);
     display: flex; align-items: center; justify-content: center; }
-  .arch-gauge::before { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--bg-secondary); }
+  .arch-gauge::before { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--bg-primary); }
   .arch-gauge .pct { position: relative; z-index: 1; font-size: 16px; font-weight: 800; color: var(--text-primary); }
   .arch-gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 92px; }
   .arch-gauge-label { font-size: 11px; color: var(--text-muted); text-align: center; line-height: 1.4; }
@@ -114,9 +128,9 @@
   .arch-gauge.ring-warn { --ring: var(--warn); }
   .arch-gauge.ring-brand { --ring: var(--color-brand-primary); }
   .arch-gauge.ring-accent2 { --ring: var(--accent2); }
-  .arch-topology { width: 100%; overflow-x: auto; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); padding: 16px; margin-bottom: 20px; }
+  .arch-topology { width: 100%; overflow-x: auto; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); padding: 16px; margin-bottom: 20px; }
   .arch-topology svg { display: block; min-width: 480px; margin: 0 auto; }
-  .arch-node rect, .arch-node circle { fill: var(--bg-primary); stroke: var(--border-color); stroke-width: 1.5; }
+  .arch-node rect, .arch-node circle { fill: var(--bg-secondary); stroke: var(--border-color); stroke-width: 1.5; }
   .arch-node.node-active rect, .arch-node.node-active circle { stroke: var(--color-brand-primary); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-brand-primary) 55%, transparent)); }
   .arch-node text { fill: var(--text-primary); font-size: 11px; font-family: system-ui, sans-serif; }
   .arch-link { stroke: var(--text-muted); stroke-width: 1.5; fill: none; }
@@ -133,7 +147,12 @@
     <div class="ai-body">
       <nav class="ai-lnb" id="ai-lnb-slot"></nav>
       <div class="ai-content">
-        <div class="topbar"><h1>프로젝트 등록 — 분야 선택 마법사 (0차, plans/_plan/04_PHASE0_PROJECT_REGISTRATION.md 구현)</h1></div>
+        <div class="topbar">
+          <div class="topbar-main">
+            <h1>① 프로젝트 등록 — 분야 선택 마법사</h1>
+            <span class="hint">프로젝트명·목표·기술영역·인프라·보안 정책을 단계별로 설정합니다 — 여기서 고른 분야는 이후 ③ 요구사항 분류의 기준이 됩니다.</span>
+          </div>
+        </div>
         <div class="wiz-body">
           <div class="sidebar" id="sidebar"></div>
           <div class="content">
