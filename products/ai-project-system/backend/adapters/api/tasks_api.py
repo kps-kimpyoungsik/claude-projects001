@@ -15,8 +15,10 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from backend.adapters.api.auth import require_api_key
-from backend.adapters.api.requirements_api import _graph_path, _write_lock, envelope, error_envelope
+from backend.adapters.api.requirements_api import envelope, error_envelope
 from backend.adapters.persistence import project_scope
+from backend.adapters.persistence.file_lock import graph_path as _graph_path
+from backend.adapters.persistence.file_lock import write_lock as _write_lock
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.adapters.persistence.task_store import TaskStore
 from backend.domain.entities.task import InvalidDomainCodeError, Task
@@ -26,7 +28,9 @@ router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(requir
 
 # [2026-07-26 회귀수정] requirements_api.py의 generate_task_from_requirement()이 같은
 # tasks_store.json을 별도 Lock 인스턴스로 썼던 실측 버그(레이스 컨디션) 수정 — §DRL-1이
-# 원래 의도한 "requirements_api._write_lock과 동일 원칙"을 실제로 같은 객체 공유로 강제한다.
+# 원래 의도한 "공유 write_lock과 동일 원칙"을 실제로 같은 객체 공유로 강제한다.
+# [2026-07-26] 락·그래프 경로 정본은 `backend/adapters/persistence/file_lock.py`로 이동
+# (순수 이동, 동작 변경 없음) — 위 import는 그 정본을 재사용한다.
 
 
 class TaskCreateRequest(BaseModel):

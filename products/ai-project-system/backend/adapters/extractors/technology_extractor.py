@@ -4,7 +4,9 @@
 router.py`의 `FORMAT_STRATEGY` 처럼 이미 있는 기술 목록 + 1차 `solution_stack` 태그를 합쳐
 '이 프로젝트가 실제 쓰는 기술 스택 전체 목록'을 그래프 노드로".
 
-리팩토링 이후 실제 경로는 `backend/adapters/parsers/router.py`(옛 `ingestion/router.py`).
+리팩토링 이후 실제 경로는 `backend/adapters/parsers/format_dispatch.py`
+(옛 `ingestion/router.py` → `backend/adapters/parsers/router.py` → 2026-07-26 rename,
+FastAPI `APIRouter`와의 이름 혼동 해소).
 
 **텍스트 스캔이 아니라 실제 import를 택한 이유(보고 의무 사항)**: `environment_extractor`/
 `process_extractor`는 대상이 사람이 쓰는 문서(.env.example, .md)라 "정교한 파서 대신 단순
@@ -20,7 +22,7 @@ router.py`의 `FORMAT_STRATEGY` 처럼 이미 있는 기술 목록 + 1차 `solut
 import importlib
 from typing import Any
 
-DEFAULT_ROUTER_MODULE_PATH = "backend.adapters.parsers.router"
+DEFAULT_ROUTER_MODULE_PATH = "backend.adapters.parsers.format_dispatch"
 
 
 def extract_technology_stack(
@@ -31,7 +33,7 @@ def extract_technology_stack(
 
     Args:
         router_module_path: `FORMAT_STRATEGY`를 가진 모듈의 dotted import 경로. 기본값은
-            현재 실제 위치(`backend/adapters/parsers/router.py`).
+            현재 실제 위치(`backend/adapters/parsers/format_dispatch.py`).
         solution_stack_usage: `commonization_extractor.extract_solution_stack_usage()`가
             반환한 dict(`{"stack_usage": {...}}` 형태) 또는 그 안의 `stack_usage` dict를
             직접 넘겨도 된다 — 둘 다 방어적으로 처리한다. None이면 solution_stack 쪽은

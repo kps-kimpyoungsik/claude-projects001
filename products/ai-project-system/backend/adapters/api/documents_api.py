@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from backend.adapters.api.auth import require_api_key
 
 from backend.adapters.api import requirements_api
-from backend.adapters.persistence import project_scope
+from backend.adapters.persistence import file_lock, project_scope
 from backend.adapters.persistence.document_store import InvalidDocIdError, _validate_doc_id
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.application.services.document_upload_service import (
@@ -110,8 +110,9 @@ async def upload_document(
     # create_requirement_manual)와 동일하게 그래프 동기화한다(CRZ — sync_requirement_to_graph
     # 재사용, 신규 동기화 로직 없음). 이 엔드포인트는 원래 req_store 쓰기 자체가 락으로
     # 보호되지 않는 기존 갭이 있으나(별도 이슈, 이번 범위 밖 — directive로 표면화 예정),
-    # 그래프 파일만은 requirements_api._write_lock으로 감싸 read-modify-write 경합을 막는다.
-    with requirements_api._write_lock:
+    # 그래프 파일만은 file_lock.write_lock으로 감싸 read-modify-write 경합을 막는다
+    # (2026-07-26 소유 위치 이동 — requirements_api._write_lock과 동일 객체, CRZ).
+    with file_lock.write_lock:
         for created_record in result.requirements_created:
             requirements_api.sync_requirement_to_graph(created_record, project_id)
 

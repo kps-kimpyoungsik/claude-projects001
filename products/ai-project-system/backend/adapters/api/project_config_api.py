@@ -19,8 +19,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.adapters.api.auth import require_api_key
-from backend.adapters.api.requirements_api import _write_lock, envelope, error_envelope
+from backend.adapters.api.requirements_api import envelope, error_envelope
 from backend.adapters.persistence import project_scope
+from backend.adapters.persistence.file_lock import write_lock as _write_lock
 from backend.adapters.persistence.project_config_store import (
     ProjectConfig,
     ProjectConfigStore,
@@ -95,7 +96,7 @@ def save_project_config(body: ProjectConfigRequest, project_id: str = Query(DEFA
     config = ProjectConfig(**fields)
     store = get_project_config_store(project_id)
     # [2026-07-26 회귀수정] write_text가 스레드 간 원자적이지 않아 동시 PUT 시 JSON 손상
-    # 가능(실측 발견) — requirements_api._write_lock 재사용(CRZ).
+    # 가능(실측 발견) — file_lock.write_lock 재사용(CRZ).
     with _write_lock:
         try:
             saved = store.save(config, created_by=body.actor)

@@ -5,8 +5,9 @@
     uvicorn backend.server:app
 
 **주의(§DRL-1)**: `--workers`를 지정하지 말 것(기본값=1, 단일 프로세스). 이 서버 내부의
-쓰기 직렬화 락(`requirements_api._write_lock`)은 단일 프로세스 안에서만 유효하다 — 여러
-프로세스로 띄우면 JSON 스토어 read-modify-write 경합을 막지 못한다.
+쓰기 직렬화 락(`backend.adapters.persistence.file_lock.write_lock`, 2026-07-26 이전엔
+`requirements_api._write_lock`으로 불리던 동일 객체)은 단일 프로세스 안에서만 유효하다 —
+여러 프로세스로 띄우면 JSON 스토어 read-modify-write 경합을 막지 못한다.
 
 이 파일은 실제로 서버를 실행(`uvicorn.run(...)` 호출)하지 않는다 — `app` 객체만 노출한다.
 """

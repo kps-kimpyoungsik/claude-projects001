@@ -6,7 +6,7 @@
 
 import pytest
 
-from backend.adapters.parsers.router import FORMAT_STRATEGY
+from backend.adapters.parsers.format_dispatch import FORMAT_STRATEGY
 from backend.adapters.parsers.speech_to_text_adapter import (
     SUPPORTED_AUDIO_EXTENSIONS,
     SpeechSegment,

@@ -10,9 +10,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.adapters.api.auth import require_api_key
-from backend.adapters.api.requirements_api import _write_lock, envelope, error_envelope
+from backend.adapters.api.requirements_api import envelope, error_envelope
 from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.doc_type_registry import DocTypeRegistry, DocTypeValidationError
+from backend.adapters.persistence.file_lock import write_lock as _write_lock
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 
 router = APIRouter(prefix="/doc-types", tags=["doc-types"], dependencies=[Depends(require_api_key)])
@@ -48,7 +49,7 @@ def list_doc_types(project_id: str = Query(DEFAULT_PROJECT_ID)):
 def create_doc_type(body: DocTypeCreateRequest, project_id: str = Query(DEFAULT_PROJECT_ID)):
     registry = get_doc_type_registry(project_id)
     # [2026-07-26 회귀수정] 전체 파일 read-modify-write인데 락이 없어 동시 생성 시
-    # 레코드 유실 가능(실측 발견) — requirements_api._write_lock 재사용(CRZ).
+    # 레코드 유실 가능(실측 발견) — file_lock.write_lock 재사용(CRZ).
     with _write_lock:
         try:
             created = registry.create(body.label, actor=body.actor, code=body.code)

@@ -5,7 +5,8 @@
 연결하는 유일한 조립 지점이다 — 새 포맷을 지원하려면 `_ADAPTERS`에 `ParserPort` 구현체를
 추가하기만 하면 된다(§4 설계 그대로, CRZ — 새 등록 메커니즘 발명 없음, 리스트 append만).
 
-`router.py`의 `IngestionRouter`(`NormalizedDocument` 계약)는 쓰지 않는다 — 그 계약에
+`format_dispatch.py`(옛 `router.py`, 2026-07-26 rename)의 `IngestionRouter`
+(`NormalizedDocument` 계약)는 쓰지 않는다 — 그 계약에
 실제로 배선된 어댑터가 하나도 없었다는 것이 이번 설계의 근본원인 진단(§1)이었고, 이미 검증된
 `ParserPort` 계약(docx_adapter.py가 실제로 구현·사용 중)을 그대로 재사용하는 편이 "또 하나의
 빈 배선"을 만들지 않는 선택이다. `FORMAT_STRATEGY`는 "이 확장자를 시스템이 인지하는가"의
@@ -32,7 +33,7 @@ from backend.adapters.parsers.docx_adapter import DocxParserAdapter
 from backend.adapters.parsers.hwp_adapter import HwpParserAdapter
 from backend.adapters.parsers.pdf_adapter import PdfParserAdapter
 from backend.adapters.parsers.pptx_adapter import PptxParserAdapter
-from backend.adapters.parsers.router import FORMAT_STRATEGY
+from backend.adapters.parsers.format_dispatch import FORMAT_STRATEGY
 from backend.adapters.parsers.speech_to_text_adapter import (
     SUPPORTED_AUDIO_EXTENSIONS,
     SpeechToTextAdapter,

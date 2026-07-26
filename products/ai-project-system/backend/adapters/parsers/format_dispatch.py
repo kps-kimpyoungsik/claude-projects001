@@ -1,4 +1,10 @@
-"""[Phase 2] 멀티포맷 Ingestion 라우터.
+"""[Phase 2] 멀티포맷 Ingestion 포맷 디스패치.
+
+[2026-07-26 파일명 변경, CRZ 순수 rename] 옛 파일명 `router.py`가 `backend/adapters/api/*.py`의
+FastAPI `APIRouter`(HTTP 라우팅)와 이름이 겹쳐 혼동을 유발했다 — 이 모듈은 HTTP 경로가 아니라
+**문서 포맷(확장자)별 처리 전략**을 디스패치한다(완전히 다른 개념). 로직 변경 없음, 유일한
+importer(`document_upload_service.py`)와 `technology_extractor.py`의 dotted import 경로,
+`tests/test_speech_to_text_adapter.py`의 import만 이 새 경로로 갱신했다.
 
 모든 입력 포맷을 표준 마크다운으로 정규화하는 진입점.
 포맷별 실제 파서(HWP/DOCX/PDF/PPTX/이미지)는 `ingestion/parsers/`에 어댑터로 구현하며,

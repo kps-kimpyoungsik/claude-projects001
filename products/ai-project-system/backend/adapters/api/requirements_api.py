@@ -5,15 +5,19 @@ set_status()`·`DocumentStore.load()`는 이미 확정된 함수를 그대로 �
 
 동시성(§DRL-1): 이 프로세스 안에서 여러 요청이 동시에 들어와도 `RequirementStore`의
 read-modify-write(JSON 전체 로드 → 수정 → 전체 저장)가 서로 겹치지 않도록 쓰기 경로
-(상태 변경·PII 열람 로그 append)를 모듈 레벨 `threading.Lock()` 하나로 직렬화한다.
+(상태 변경·PII 열람 로그 append)를 공유 락 하나로 직렬화한다.
 `RequirementStore`/`DocumentStore` 자체는 수정하지 않는다(기존 클래스 계약 불변).
 이 락은 "같은 프로세스 안의 스레드 경합"만 막는다 — 여러 프로세스(uvicorn --workers > 1)로
 띄우면 이 락으로 막을 수 없으므로, 실행 가이드(§3)대로 반드시 단일 프로세스(--workers 지정
 없이 기본값)로만 기동한다.
+
+[2026-07-26 순수 이동] 이 락(`_write_lock`)과 그래프 경로 헬퍼(`_graph_path`)는 요구사항
+도메인 전용이 아니라 여러 API 어댑터가 공유하는 범용 JSON 파일 스토어 동시성 관심사라
+`backend/adapters/persistence/file_lock.py`로 소유권을 옮겼다(동작 변경 없음, CRZ) — 이
+모듈은 그 정본을 재사용만 한다(하위 호환을 위해 동일 이름으로 재노출).
 """
 
 import json
-import threading
 from dataclasses import asdict
 from datetime import datetime, timezone
 
@@ -25,6 +29,8 @@ from backend.adapters.api.auth import require_api_key
 from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.doc_type_registry import DocTypeRegistry
 from backend.adapters.persistence.document_store import DocumentStore
+from backend.adapters.persistence.file_lock import graph_path as _graph_path
+from backend.adapters.persistence.file_lock import write_lock as _write_lock
 from backend.adapters.persistence.project_config_store import ProjectConfigStore
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.adapters.persistence.requirement_store import RequirementRecord, RequirementStore
@@ -39,7 +45,8 @@ from backend.domain.requirements.design_gate import evaluate_design_draft_gate
 router = APIRouter(prefix="/requirements", tags=["requirements"], dependencies=[Depends(require_api_key)])
 
 # §DRL-1 — 상태변경·PII 열람 로그 append를 직렬화하는 프로세스 내 단일 락.
-_write_lock = threading.Lock()
+# [2026-07-26] 정본은 `backend/adapters/persistence/file_lock.write_lock` — 위 import에서
+# `_write_lock`이라는 기존 이름으로 재노출한다(하위 호환, 동일 객체 — 새 Lock() 아님).
 
 
 def envelope(ok: bool, data: dict | None = None, error: dict | None = None) -> dict:
@@ -129,13 +136,11 @@ def _preview_access_log_path(project_id: str = DEFAULT_PROJECT_ID):
     return project_scope.resolve_project_data_dir(project_id) / "preview_access_log.jsonl"
 
 
-def _graph_path(project_id: str = DEFAULT_PROJECT_ID):
-    """[2026-07-25 고도화] 요구사항→그래프 동기화 대상 — DocumentStore/TaskStore와 동일하게
-    `project_scope.resolve_project_data_dir()`를 그대로 재사용한다(CRZ, 신규 경로규칙 발명
-    없음). 5-agent 진단(2026-07-24)에서 확인된 "`.graphify-out/`가 항상 비어있다"의 직접
-    원인 — 지금까지 이 경로에 실제로 쓰는 호출부가 어디에도 없었다(요구사항이 채번될 때마다
-    이 함수가 반환하는 경로에 노드를 동기화하는 것이 이번 보완의 핵심)."""
-    return project_scope.resolve_project_data_dir(project_id) / ".graphify-out" / "graph.json"
+# [2026-07-26] `_graph_path`의 정본은 `backend/adapters/persistence/file_lock.graph_path` —
+# 위 import에서 기존 이름 `_graph_path`로 재노출한다(하위 호환, 로직 변경 없음). 5-agent
+# 진단(2026-07-24)에서 확인된 "`.graphify-out/`가 항상 비어있다"의 직접 원인이 이 경로에
+# 실제로 쓰는 호출부 부재였다는 배경은 그대로 유효하다 — `sync_requirement_to_graph()`가
+# 요구사항이 채번될 때마다 이 경로에 노드를 동기화한다.
 
 
 def sync_requirement_to_graph(record: RequirementRecord, project_id: str = DEFAULT_PROJECT_ID) -> None:
