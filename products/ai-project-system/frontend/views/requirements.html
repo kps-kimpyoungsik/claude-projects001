@@ -80,6 +80,12 @@
      규칙이 없어 이 화면에서만 보강, components.css의 .btn:disabled와 동일 시각효과). */
   .btn-task:hover { border-color: var(--color-brand-primary); color: var(--brand-text); }
   .btn-task:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* [2026-07-26 신규] 재청킹 상태 텍스트 — documents.html .upload-status와 동일 색상 규칙
+     (신규 색상 없음, --ok-text/--danger-text 재사용, CRZ). */
+  .rechunk-status { font-size: 13px; }
+  .rechunk-status.ok { color: var(--ok-text); }
+  .rechunk-status.err { color: var(--danger-text); }
 </style>
 </head>
 <body>
@@ -107,6 +113,16 @@
     <span class="actor-bar-icon">👤</span>
     <span class="actor-bar-label">행위자(actor)</span>
     <input type="text" id="actor-input" placeholder="예: hong.gildong" />
+  </div>
+
+  <!-- [2026-07-26 신규] 재청킹 진행 표시 — documents.html과 동일한 공용 컴포넌트
+       재사용(components.css .progress-indeterminate/.progress-elapsed/.flash-success, CRZ).
+       문서 전체 재청킹도 업로드와 동일하게 서버가 진행률을 줄 수 없는 단일 블로킹 호출이라
+       "동작 중" 신호가 똑같이 필요하다(사용자 지적: "동작이 인지가 안돼"). -->
+  <div class="req-section req-section-tools" id="rechunk-status-panel" style="display:none;">
+    <div class="rechunk-status" id="rechunk-status"></div>
+    <div class="progress-indeterminate" id="rechunk-progress" style="display:none;"><div class="progress-indeterminate-bar"></div></div>
+    <div class="progress-elapsed" id="rechunk-elapsed" style="display:none;"></div>
   </div>
 
   <div class="req-section req-section-tools">
@@ -241,21 +257,70 @@ async function generateTask(reqId) {
   }
 }
 
+// [2026-07-26 근본수정] 이전 구현은 이름과 달리 청킹을 재실행하지 않고 이 REQ 1건을
+// REJECTED로 표시만 했다(실측 확인 — backend request_rechunk()가 set_status(REJECTED)
+// + 소비자 없는 rechunk_queue.jsonl append만 하는 죽은 끝단이었음, T98 AIP 갭). 원본
+// 문서(`DocumentStore`)가 폐기되지 않고 항상 남아있다는 사실을 실측으로 확인했으므로,
+// 이제 이 버튼은 실제로 문서 전체를 다시 청킹하는 `POST /documents/{doc_id}/rechunk`를
+// 호출한다 — REQ 1건이 아니라 "이 REQ가 속한 문서 전체"가 재청킹 대상이므로(청킹 경계는
+// 문서 단위로만 다시 계산 가능), 실행 전 그 사실을 명시적으로 고지·확인받는다.
 async function requestRechunk(reqId) {
+  const record = ALL_RECORDS.find(r => r.req_id === reqId);
+  if (!record || !record.doc_id) {
+    await uiAlert("이 요구사항은 문서에서 나온 것이 아니라(doc_id 없음) 재청킹할 수 없습니다 — 단건 등록 항목입니다.");
+    return;
+  }
+  const docId = record.doc_id;
+  const siblingCount = ALL_RECORDS.filter(r => r.doc_id === docId && r.lifecycle_status !== "WITHDRAWN").length;
+
   const reason = await uiPrompt("재청킹 요청 사유를 입력하세요(청킹 경계가 왜 틀렸는지, 필수입력):", "");
   if (!reason) return;
+
+  const confirmed = await uiConfirm(
+    `이 문서(${docId})에서 나온 기존 요구사항 ${siblingCount}건이 모두 철회(WITHDRAWN)되고, ` +
+    `문서 전체를 다시 청킹해 새로 채번합니다. 이 REQ 1건만 대상이 아닙니다. 계속하시겠습니까?`
+  );
+  if (!confirmed) return;
+
+  const statusPanel = document.getElementById("rechunk-status-panel");
+  const statusEl = document.getElementById("rechunk-status");
+  const progressEl = document.getElementById("rechunk-progress");
+  const elapsedEl = document.getElementById("rechunk-elapsed");
+
+  statusPanel.style.display = "block";
+  statusEl.className = "rechunk-status";
+  statusEl.textContent = "";
+  progressEl.style.display = "block";
+  elapsedEl.style.display = "block";
+  let elapsedSec = 0;
+  elapsedEl.textContent = "재청킹 처리 중... 0초 경과";
+  const elapsedTimer = setInterval(() => {
+    elapsedSec += 1;
+    elapsedEl.textContent = `재청킹 처리 중... ${elapsedSec}초 경과`;
+  }, 1000);
+
   try {
     const body = { reason, actor: getActor() };
-    const result = await postJSON(`/requirements/${encodeURIComponent(reqId)}/rechunk?project_id=${encodeURIComponent(getProjectId())}`, body);
-    const record = ALL_RECORDS.find(r => r.req_id === reqId);
-    if (record) {
-      record.lifecycle_status = result.data.lifecycle_status;
-      record.status_history = result.data.status_history;
-    }
+    const result = await postJSON(`/documents/${encodeURIComponent(docId)}/rechunk?project_id=${encodeURIComponent(getProjectId())}`, body);
+    statusEl.className = "rechunk-status ok flash-success";
+    statusEl.textContent =
+      `재청킹 완료: 기존 ${result.data.withdrawn_req_ids.length}건 철회, 새 청크 ${result.data.chunk_count}개 · ` +
+      `요구사항 ${result.data.requirements_created.length}건 재채번(미분류 ${result.data.unclassified_chunk_count}개).`;
+
+    // 목록 전체를 다시 불러온다 — 이 요청 하나로 문서 전체의 REQ 구성(WITHDRAWN 처리된
+    // 옛 항목 + 새로 채번된 항목)이 바뀌므로, 화면의 record 하나만 patch하는 것으로는
+    // 부족하다(§upload와 동일하게 실시간 재조회, CRZ).
+    const json2 = await window.AegisApi.get(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
+    ALL_RECORDS = json2.data.requirements || [];
     renderSummary(ALL_RECORDS);
     applyFiltersAndRender();
   } catch (e) {
-    await uiAlert(`재청킹 요청 실패: ${e.message}`);
+    statusEl.className = "rechunk-status err";
+    statusEl.textContent = `재청킹 실패: ${e.message}`;
+  } finally {
+    clearInterval(elapsedTimer);
+    progressEl.style.display = "none";
+    elapsedEl.style.display = "none";
   }
 }
 

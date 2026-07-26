@@ -20,6 +20,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 from backend.adapters.api.auth import require_api_key
 
@@ -31,6 +32,7 @@ from backend.application.services.document_upload_service import (
     NotImplementedUploadFormatError,
     UnsupportedUploadFormatError,
     process_uploaded_file,
+    rechunk_document,
 )
 from backend.application.services.page_render_service import render_page
 
@@ -124,6 +126,78 @@ async def upload_document(
             "chunk_count": result.chunk_count,
             "requirements_created": [r.req_id for r in result.requirements_created],
             "unclassified_chunk_count": result.unclassified_chunk_count,
+        },
+    )
+
+
+class RechunkDocumentRequest(BaseModel):
+    """[2026-07-26 신규] `POST /documents/{doc_id}/rechunk` 요청 바디. reason은 필수
+    (추정 사유 금지 — `requirements_api.RechunkRequest`와 동일 원칙, §5-2)."""
+
+    actor: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1)
+
+
+@router.post("/{doc_id}/rechunk")
+def rechunk_document_endpoint(
+    doc_id: str,
+    body: RechunkDocumentRequest,
+    project_id: str = Query(DEFAULT_PROJECT_ID),
+):
+    """[2026-07-26 신규, directive 실증실행] 문서 원본을 재업로드하지 않고 실제로 다시
+    청킹한다 — 지금까지 `requirements_api.request_rechunk()`("재청킹 요청")는 이름과
+    달리 청킹을 재실행하지 않고 REQ 1건을 REJECTED로 표시만 했다(실측 확인, T98 AIP
+    갭). `DocumentStore`가 원문 마크다운을 폐기하지 않고 항상 보관한다는 사실(§DocumentStore
+    docstring)을 근거로, 그 원문을 다시 청킹해 이 문서의 기존 REQ 전체를 WITHDRAWN
+    처리하고 새 REQ를 채번하는 실제 실행기를 신설한다(CRZ — 새 채번·상태전이 로직 없음,
+    `document_upload_service.rechunk_document()`가 기존 함수만 재사용해 조립).
+    """
+    req_store = requirements_api.get_requirement_store(project_id)
+    doc_store = requirements_api.get_document_store(project_id)
+
+    content = doc_store.load(doc_id)
+    if content is None:
+        return JSONResponse(
+            status_code=404,
+            content=requirements_api.error_envelope("AEGIS-NOTFOUND", f"존재하지 않는 doc_id: {doc_id}"),
+        )
+
+    # 원본이 PDF였거나 LibreOffice로 변환된 PDF가 있으면(§8 W4) 그대로 넘겨 bbox/page_number도
+    # 다시 채운다 — 없으면 None(§8-6 하위호환, upload_document()와 동일한 폴백 원칙).
+    pdf_source: bytes | None = None
+    try:
+        raw_pdf_path = _original_pdf_path(doc_id, project_id)
+        if raw_pdf_path.exists():
+            pdf_source = raw_pdf_path.read_bytes()
+    except InvalidDocIdError:
+        return JSONResponse(
+            status_code=404,
+            content=requirements_api.error_envelope("AEGIS-NOTFOUND", f"존재하지 않는 doc_id: {doc_id}"),
+        )
+
+    with file_lock.write_lock:
+        result = rechunk_document(
+            doc_id=doc_id,
+            content=content,
+            actor=body.actor,
+            reason=body.reason,
+            req_store=req_store,
+            pdf_source=pdf_source,
+        )
+        # upload_document()와 동일하게(§ 위 참고) 새로 채번된 REQ만 그래프에 동기화한다
+        # (WITHDRAWN된 옛 REQ는 그래프 동기화 대상이 아님 — sync_requirement_to_graph는
+        # "새로 생긴 노드"를 위한 함수, CRZ).
+        for created_record in result.requirements_created:
+            requirements_api.sync_requirement_to_graph(created_record, project_id)
+
+    return requirements_api.envelope(
+        ok=True,
+        data={
+            "doc_id": result.doc_id,
+            "chunk_count": result.chunk_count,
+            "requirements_created": [r.req_id for r in result.requirements_created],
+            "unclassified_chunk_count": result.unclassified_chunk_count,
+            "withdrawn_req_ids": result.withdrawn_req_ids,
         },
     )
 

@@ -183,6 +183,37 @@ th:hover { color: var(--text-primary); }
 .pii-gate-actions .btn-confirm { background: var(--warn); border: none; color: #111; font-weight: 600; }
 .pii-gate-actions .btn-cancel { background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); }
 
+/* ── 진행 표시(불확정, indeterminate) — 청킹처럼 서버가 실제 진행률 신호를 줄 수 없는
+   장기 블로킹 HTTP 호출(1건의 동기 요청 안에서 파싱→청킹→LLM 판단까지 끝남, 백그라운드
+   잡 없음)의 "동작 중" 피드백(2026-07-26 신설, documents.html·requirements.html 공용 —
+   업로드 청킹과 재청킹 둘 다 동일한 "결과 도착 전까지 진행률 미지" 특성).
+   거짓 퍼센트를 만들지 않는다(T98 AIP) — 애니메이션 스트라이프 + 경과초 텍스트로
+   "멈춘 게 아니라 동작 중"이라는 사실만 정직하게 전달한다. */
+.progress-indeterminate { margin-top: 8px; height: 8px; border-radius: 999px; overflow: hidden; background: var(--hover-tint); position: relative; }
+.progress-indeterminate-bar {
+  position: absolute; top: 0; left: -40%; height: 100%; width: 40%; border-radius: 999px;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-brand-primary), var(--color-brand-primary) 10px,
+    color-mix(in srgb, var(--color-brand-primary) 45%, transparent) 10px,
+    color-mix(in srgb, var(--color-brand-primary) 45%, transparent) 20px
+  );
+  animation: progress-indeterminate-slide 1.1s linear infinite;
+}
+@keyframes progress-indeterminate-slide {
+  from { left: -40%; }
+  to { left: 100%; }
+}
+.progress-elapsed { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* 완료 시 잠깐 강조(성공 플래시) — 정적 텍스트 한 줄만으로는 "완료됐다"는 사실이
+   눈에 잘 안 띈다는 지적 보강(사용자: "동작이 인지가 안돼"). 새 색상 발명 없음(--ok 재사용). */
+@keyframes flash-success-bg {
+  0% { background: color-mix(in srgb, var(--ok) 35%, transparent); }
+  100% { background: transparent; }
+}
+.flash-success { animation: flash-success-bg 1.4s ease; border-radius: var(--border-radius-base); }
+
 /* ── 공용 커스텀 다이얼로그 (alert/confirm/prompt 대체, 2026-07-26 신설) ─────────
    frontend/js/ui-dialogs.js 전용 스타일. `.pii-gate-overlay` 패턴(뷰포트 중앙 고정
    오버레이)을 모든 화면 공용으로 일반화한 것 — 새 색상 발명 없이 토큰만 재사용(CRZ).

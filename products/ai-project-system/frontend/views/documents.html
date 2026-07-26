@@ -129,6 +129,12 @@
           <button class="action-btn" id="upload-btn" onclick="uploadDocument()">문서 등록</button>
         </div>
         <div class="upload-hint">지원 포맷: .txt·.md·.docx·.pptx·.pdf·.xlsx·.hwp</div>
+        <!-- [2026-07-26 신규] 업로드→파싱→청킹은 uvicorn 단일 워커에서 동기·블로킹으로 처리되며
+             서버가 실제 진행률(%)을 줄 수 있는 백그라운드 잡이 아니다 — 거짓 퍼센트 대신
+             불확정(indeterminate) 진행바 + 경과초 텍스트로 "멈춘 게 아니라 동작 중"임을 정직하게
+             보여준다(사용자 지적: "동작이 인지가 안돼"). components.css 공용 컴포넌트 재사용(CRZ). -->
+        <div class="progress-indeterminate" id="upload-progress" style="display:none;"><div class="progress-indeterminate-bar"></div></div>
+        <div class="progress-elapsed" id="upload-elapsed" style="display:none;"></div>
         <div class="upload-status" id="upload-status"></div>
         <div class="doc-type-row">
           <span class="doc-type-label">문서유형(등록된 종류):</span>
@@ -199,9 +205,23 @@ async function uploadDocument() {
   }
 
   const btn = document.getElementById("upload-btn");
+  const progressEl = document.getElementById("upload-progress");
+  const elapsedEl = document.getElementById("upload-elapsed");
   btn.disabled = true;
   statusEl.className = "upload-status";
-  statusEl.textContent = "업로드 중...";
+  statusEl.textContent = "";
+
+  // [2026-07-26 신규] 불확정 진행바 + 경과초 카운터 — 아래 fetch가 끝날 때까지(파싱→
+  // LibreOffice 변환(최대 120초)→SPCEngine 청킹(Ollama 최대 60초 또는 즉시 폴백) 전체를
+  // 감싸는 유일한 블로킹 호출 1건) 몇 초가 걸리든 "동작 중"이라는 증거를 계속 보여준다.
+  let elapsedSec = 0;
+  progressEl.style.display = "block";
+  elapsedEl.style.display = "block";
+  elapsedEl.textContent = "청킹 처리 중... 0초 경과";
+  const elapsedTimer = setInterval(() => {
+    elapsedSec += 1;
+    elapsedEl.textContent = `청킹 처리 중... ${elapsedSec}초 경과`;
+  }, 1000);
 
   const form = new FormData();
   form.append("file", file);
@@ -217,7 +237,7 @@ async function uploadDocument() {
     }
 
     const d = data.data;
-    statusEl.className = "upload-status ok";
+    statusEl.className = "upload-status ok flash-success";
     statusEl.innerHTML =
       `등록 완료: <strong>${escapeHtml(d.doc_filename)}</strong> — 청크 ${d.chunk_count}개, ` +
       `요구사항 ${d.requirements_created.length}건 채번(미분류 ${d.unclassified_chunk_count}개). ` +
@@ -239,6 +259,9 @@ async function uploadDocument() {
     statusEl.className = "upload-status err";
     statusEl.textContent = `업로드 실패: ${e.message}`;
   } finally {
+    clearInterval(elapsedTimer);
+    progressEl.style.display = "none";
+    elapsedEl.style.display = "none";
     btn.disabled = false;
   }
 }

@@ -230,3 +230,78 @@ def process_uploaded_file(
         unclassified_chunk_count=unclassified,
         pdf_bytes_for_page_render=parse_source if ext.lower() == ".pdf" else None,
     )
+
+
+@dataclass
+class RechunkResult:
+    """`rechunk_document()`의 반환값 — `UploadResult`와 형태를 맞추되(같은 소비 패턴),
+    새로 만들어진 것 없이 대체된 이전 REQ 목록(`withdrawn_req_ids`)을 추가로 들고 있다
+    (호출자가 "몇 건이 대체됐는지" 정직하게 보고할 수 있게, T98 AIP)."""
+    doc_id: str
+    chunk_count: int
+    requirements_created: list[RequirementRecord] = field(default_factory=list)
+    unclassified_chunk_count: int = 0
+    withdrawn_req_ids: list[str] = field(default_factory=list)
+
+
+def rechunk_document(
+    doc_id: str,
+    content: str,
+    actor: str,
+    reason: str,
+    req_store: RequirementStore,
+    pdf_source: bytes | None = None,
+) -> RechunkResult:
+    """[2026-07-26 신규] 원본 파일 재업로드 없이, 이미 `DocumentStore`가 보관 중인 원문
+    마크다운(`content`)을 다시 청킹한다.
+
+    이 함수가 성립하는 이유(실측, T59 CFD): `DocumentStore.save()`가 매 업로드 직후
+    원문 전체를 `documents/{doc_id}.md`에 그대로 저장하고 절대 지우지 않는다(§DocumentStore
+    docstring 참고) — 따라서 최초 업로드 시 실행됐던 파싱→청킹 파이프라인 중 "파싱"
+    단계(포맷별 어댑터)는 이미 끝난 상태이고, 다시 필요한 것은 청킹(SPCEngine)부터다.
+    파일을 다시 파싱하지 않는 것이 정확도를 낮추지 않는다 — 저장된 마크다운이 최초
+    파싱 결과 그 자체이기 때문.
+
+    처리 순서(§5-2 재청킹 설계 그대로):
+    1. 이 doc_id에서 나온 기존 REQ(이미 WITHDRAWN인 것 제외)를 전부 WITHDRAWN 처리한다
+       (물리 삭제 없음 — `RequirementStore.set_status()` 재사용, 감사 이력 보존).
+    2. 원문을 다시 청킹해(업로드와 동일한 `_build_chunking_splitter()`/`SPCEngine` 조립)
+       새 REQ를 채번한다(`extract_requirements_from_chunks()` 재사용, CRZ — 신규 채번
+       로직 없음. `_next_seq()`가 기존 REQ ID와 절대 충돌하지 않는 새 일련번호를 배정).
+
+    **정직성 한계(T98 AIP)**: 청킹 경계가 문서 구조 변화 없이도 SPCEngine/LLM 판단
+    민감도에 따라 미세하게 달라질 수 있어, "이전 REQ 1건 → 새 REQ 1건"의 1:1 대응을
+    보장하지 않는다(섹션이 합쳐지거나 쪼개질 수 있음). 그래서 `RequirementRecord.
+    supersedes_req_id`(신규 REQ가 옛 REQ 하나를 정확히 대체했다는 필드)는 이 배치
+    재청킹에서는 채우지 않는다 — 틀릴 수 있는 1:1 추정 링크를 만드는 것보다, "이 문서의
+    기존 REQ N건이 전부 WITHDRAWN됐고 M건이 새로 채번됐다"는 사실만 정직하게 보고하는
+    편이 안전하다(과장·오추정 금지).
+    """
+    old_records = [
+        r for r in req_store.list_all()
+        if r.doc_id == doc_id and r.lifecycle_status != "WITHDRAWN"
+    ]
+    withdrawn_ids: list[str] = []
+    for r in old_records:
+        req_store.set_status(r.req_id, "WITHDRAWN", actor=actor, reason=f"[RECHUNK] {reason}")
+        withdrawn_ids.append(r.req_id)
+
+    semantic_splitter = _build_chunking_splitter()
+    engine = SPCEngine(splitter=semantic_splitter) if semantic_splitter else SPCEngine()
+    chunks = engine.process_document(content, context_label=doc_id, doc_id=doc_id)
+
+    doc_format = ".pdf" if pdf_source is not None else ""
+    records = extract_requirements_from_chunks(
+        chunks, req_store, doc_format=doc_format, pdf_source=pdf_source
+    )
+
+    child_chunk_count = sum(1 for c in chunks if c.parent_id is not None)
+    unclassified = child_chunk_count - len(records)
+
+    return RechunkResult(
+        doc_id=doc_id,
+        chunk_count=child_chunk_count,
+        requirements_created=records,
+        unclassified_chunk_count=unclassified,
+        withdrawn_req_ids=withdrawn_ids,
+    )
