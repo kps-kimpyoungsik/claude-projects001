@@ -9,14 +9,13 @@ MCP 호출을 하는 것은 아니다(그런 채널은 존재하지 않음, 과�
 """
 
 import json
-import threading
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from backend.adapters.api.auth import require_api_key
-from backend.adapters.api.requirements_api import _graph_path, envelope, error_envelope
+from backend.adapters.api.requirements_api import _graph_path, _write_lock, envelope, error_envelope
 from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.adapters.persistence.task_store import TaskStore
@@ -25,8 +24,9 @@ from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(require_api_key)])
 
-# §DRL-1 — requirements_api._write_lock과 동일 원칙(단일 프로세스 내 쓰기 직렬화).
-_write_lock = threading.Lock()
+# [2026-07-26 회귀수정] requirements_api.py의 generate_task_from_requirement()이 같은
+# tasks_store.json을 별도 Lock 인스턴스로 썼던 실측 버그(레이스 컨디션) 수정 — §DRL-1이
+# 원래 의도한 "requirements_api._write_lock과 동일 원칙"을 실제로 같은 객체 공유로 강제한다.
 
 
 class TaskCreateRequest(BaseModel):

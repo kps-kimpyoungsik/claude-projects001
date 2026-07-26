@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.adapters.api.auth import require_api_key
-from backend.adapters.api.requirements_api import envelope, error_envelope
+from backend.adapters.api.requirements_api import _write_lock, envelope, error_envelope
 from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.project_config_store import (
     ProjectConfig,
@@ -94,8 +94,11 @@ def save_project_config(body: ProjectConfigRequest, project_id: str = Query(DEFA
     fields = body.model_dump(exclude={"actor"})
     config = ProjectConfig(**fields)
     store = get_project_config_store(project_id)
-    try:
-        saved = store.save(config, created_by=body.actor)
-    except ProjectConfigValidationError as exc:
-        return JSONResponse(status_code=422, content=error_envelope("AEGIS-VALIDATION", str(exc)))
+    # [2026-07-26 회귀수정] write_text가 스레드 간 원자적이지 않아 동시 PUT 시 JSON 손상
+    # 가능(실측 발견) — requirements_api._write_lock 재사용(CRZ).
+    with _write_lock:
+        try:
+            saved = store.save(config, created_by=body.actor)
+        except ProjectConfigValidationError as exc:
+            return JSONResponse(status_code=422, content=error_envelope("AEGIS-VALIDATION", str(exc)))
     return envelope(ok=True, data={"config": asdict(saved)})
