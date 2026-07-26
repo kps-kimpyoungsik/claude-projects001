@@ -70,18 +70,14 @@
 
 <script src="../js/ui-dialogs.js"></script>
 <script src="../js/project-scope.js"></script>
+<script src="../js/api.js"></script>
 <script src="../js/shell-loader.js"></script>
+<script src="../js/constants.js"></script>
 <script>
-const WORK_STATUS_ORDER = ["BLOCKED", "IN_PROGRESS", "DISPATCHED", "NOT_DISPATCHED", "DONE"];
-// [2026-07-22 UI/UX 고도화] 상태별 아이콘 + 카드 강조색 매핑 — 숫자만 덩그러니 있던
-// 카드에 한눈에 구분되는 시각 신호 추가(신규 상태값 발명 없음, 기존 5개 그대로).
-const WORK_STATUS_META = {
-  NOT_DISPATCHED: { icon: "⏳", label: "미배차", tone: "" },
-  DISPATCHED: { icon: "📨", label: "배차됨", tone: "" },
-  IN_PROGRESS: { icon: "⚙️", label: "진행 중", tone: "" },
-  DONE: { icon: "✅", label: "완료", tone: "ok" },
-  BLOCKED: { icon: "🚫", label: "차단", tone: "danger" },
-};
+// [2026-07-26 리팩터] WORK_STATUS_ORDER/WORK_STATUS_META는 frontend/js/constants.js로
+// 승격(값·아이콘·라벨 동일 — CRZ, 이 화면 로컬 정의 제거).
+const WORK_STATUS_ORDER = window.AegisConstants.WORK_STATUS_ORDER;
+const WORK_STATUS_META = window.AegisConstants.WORK_STATUS_META;
 
 function renderSummary(records) {
   const counts = { NOT_DISPATCHED: 0, DISPATCHED: 0, IN_PROGRESS: 0, DONE: 0, BLOCKED: 0 };
@@ -146,9 +142,7 @@ function getProjectId() {
 async function init() {
   let records;
   try {
-    const res = await fetch(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
-    const json = await res.json();
-    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    const json = await window.AegisApi.get(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
     records = json.data.requirements || [];
   } catch (e) {
     document.getElementById("empty-state").style.display = "block";

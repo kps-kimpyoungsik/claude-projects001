@@ -134,10 +134,11 @@
       }).join("");
     }
 
-    fetch("/projects")
-      .then(function (res) { return res.json(); })
+    // [2026-07-26 리팩터] frontend/js/api.js로 승격 — AegisApi.get이 이미 ok===false/
+    // !data 판정을 던지므로 이 안의 body.data 존재 체크만 남긴다(CRZ, 동일 동작 유지).
+    window.AegisApi.get("/projects")
       .then(function (body) {
-        if (!body || body.ok === false || !body.data) throw new Error("프로젝트 목록 응답 이상");
+        if (!body || !body.data) throw new Error("프로젝트 목록 응답 이상");
         var projects = body.data.projects || [];
         var currentId = window.AegisProject.getId();
         select.innerHTML = "";
@@ -175,17 +176,9 @@
       statusSelect.addEventListener("change", function () {
         var projectId = window.AegisProject.getId();
         var newStatus = statusSelect.value;
-        fetch("/projects/" + encodeURIComponent(projectId) + "/status", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: newStatus }),
-        })
-          .then(function (res) { return res.json().then(function (body) { return { res: res, body: body }; }); })
-          .then(function (r) {
-            if (!r.res.ok || !r.body || r.body.ok === false) {
-              throw new Error((r.body && r.body.error && r.body.error.message) || "상태 변경 실패");
-            }
-          })
+        // [2026-07-26 리팩터] frontend/js/api.js로 승격(CRZ) — AegisApi.patch가 이미
+        // res.ok/body.ok 판정을 던지므로 여기선 성공 시 아무 것도 할 필요 없다.
+        window.AegisApi.patch("/projects/" + encodeURIComponent(projectId) + "/status", { status: newStatus })
           .catch(function (e) {
             // ui-dialogs.js(우선 로드) 없이 이 셸이 단독으로 쓰이는 경우를 대비해
             // 전역 uiAlert 부재 시 네이티브 alert로 안전 폴백(신규 의존 강제 회피).
@@ -202,14 +195,9 @@
         var showPrompt = window.uiPrompt || function (m, d) { return Promise.resolve(window.prompt(m, d)); };
         showPrompt("새 프로젝트 이름을 입력하세요:", "").then(function (name) {
           if (!name || !name.trim()) return;
-          fetch("/projects", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: name.trim() }),
-          })
-            .then(function (res) { return res.json(); })
+          // [2026-07-26 리팩터] frontend/js/api.js로 승격(CRZ).
+          window.AegisApi.post("/projects", { name: name.trim() })
             .then(function (body) {
-              if (!body || body.ok === false) throw new Error((body && body.error && body.error.message) || "생성 실패");
               window.AegisProject.setId(body.data.id);
               location.reload();
             })

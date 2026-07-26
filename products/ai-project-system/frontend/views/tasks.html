@@ -97,6 +97,7 @@
 
 <script src="../js/ui-dialogs.js"></script>
 <script src="../js/project-scope.js"></script>
+<script src="../js/api.js"></script>
 <script src="../js/shell-loader.js"></script>
 <script>
 let ALL_TASKS = [];
@@ -136,19 +137,10 @@ function getProjectId() {
   return window.AegisProject ? window.AegisProject.getId() : "default";
 }
 
+// [2026-07-26 리팩터] frontend/js/api.js로 승격 — requirements.html·preview.html과
+// 동일 boilerplate였다(CRZ). 함수 이름은 아래 호출부 유지를 위해 남김.
 async function postJSON(url, body) {
-  let res;
-  try {
-    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  } catch (e) {
-    throw new Error(`네트워크 오류 — API 서버(uvicorn backend.server:app)가 기동 중인지 확인하세요. (${e.message})`);
-  }
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data || data.ok === false) {
-    const msg = (data && data.error && data.error.message) ? data.error.message : `요청 실패 (HTTP ${res.status})`;
-    throw new Error(msg);
-  }
-  return data;
+  return window.AegisApi.post(url, body);
 }
 
 // [Phase 5.3 HITL] 서킷 브레이커(needs_escalation=true) Task는 사람이 검토를 확인한
@@ -269,9 +261,7 @@ function applyFiltersAndRender() {
 
 async function init() {
   try {
-    const res = await fetch(`/tasks?project_id=${encodeURIComponent(getProjectId())}`);
-    const json = await res.json();
-    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    const json = await window.AegisApi.get(`/tasks?project_id=${encodeURIComponent(getProjectId())}`);
     ALL_TASKS = json.data.tasks || [];
   } catch (e) {
     document.getElementById("empty-state").style.display = "block";

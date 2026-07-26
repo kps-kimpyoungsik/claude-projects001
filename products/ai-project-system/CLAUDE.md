@@ -27,6 +27,22 @@
 
 하나라도 불명확하면 구현 전에 사용자에게 AskUserQuestion으로 확인한다 — 추정 진행 금지.
 
+## 작업 시 aegis agent 협업 필수 (2026-07-26 사용자 지시)
+
+이 프로젝트에서 D2 이상(코드 변경·설계 결정·리팩토링 등 실질 판단이 들어가는 작업)을 수행할 때는
+오케스트레이터가 직접 인라인으로 처리하지 말고, 분야에 맞는 aegis 전문가 agent와 반드시 협업한다:
+
+- `Agent(subagent_type="general-purpose", prompt="Read D:\aegis\agents\aegis-dev000\SPECIALIST.md ... 하에서 작업")`
+  형태로, 실제 작업 착수 전 해당 SPECIALIST.md를 먼저 읽고 그 표준을 따르도록 지시한다
+  (이 환경엔 `aegis-dev000`가 유효한 `subagent_type`이 아니므로 이 우회 경로가 표준 패턴이다).
+- 설계/아키텍처 판단이 큰 작업은 `aegis-architect000`, 인프라 구성은 `aegis-infra000`,
+  보안 관련은 `aegis-security000`의 SPECIALIST.md를 동일한 방식으로 참조시킨다.
+- D1(단순 1파일 수정·조회·설명)은 예외 — 오케스트레이터가 직접 처리해도 된다.
+- 위임 후에도 결과는 반드시 독립 재검증한다(git diff/git status, node --check, curl 등) —
+  agent 자가보고를 그대로 신뢰하지 않는다.
+- 서버(pm2 `ai-project-system`, 포트 8899)는 어떤 위임 작업에서도 절대 taskkill 금지 — 검증용
+  서버가 필요하면 다른 포트를 쓴다.
+
 ## 상속 구조
 
 ```

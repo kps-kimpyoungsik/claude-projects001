@@ -166,6 +166,7 @@
 
 <script src="../js/ui-dialogs.js"></script>
 <script src="../js/project-scope.js"></script>
+<script src="../js/api.js"></script>
 <script src="../js/shell-loader.js"></script>
 <script>
 let ALL_RECORDS = [];   // GET /requirements?project_id= 실시간 응답 — 문서 목록·청크 건수 집계용
@@ -225,9 +226,12 @@ async function uploadDocument() {
 
     // 방금 만든 문서를 목록에 반영하고 바로 청크맵을 열어 보여준다(§4 설계 그대로).
     // [2026-07-22 고도화] 정적 스냅샷 대신 프로젝트별 실시간 목록 사용(CRZ).
-    const res2 = await fetch(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
-    const json2 = await res2.json();
-    ALL_RECORDS = (json2.ok && json2.data.requirements) || [];
+    try {
+      const json2 = await window.AegisApi.get(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
+      ALL_RECORDS = json2.data.requirements || [];
+    } catch (e2) {
+      ALL_RECORDS = [];
+    }
     DOC_INDEX = buildDocIndex(ALL_RECORDS);
     renderDocList();
     await selectDocument(d.doc_id);
@@ -239,19 +243,10 @@ async function uploadDocument() {
   }
 }
 
+// [2026-07-26 리팩터] frontend/js/api.js로 승격 — preview.html의 getJSON과 동일
+// boilerplate였다(CRZ). 함수 이름은 아래 호출부 유지를 위해 남김.
 async function getJSON(url) {
-  let res;
-  try {
-    res = await fetch(url);
-  } catch (e) {
-    throw new Error(`네트워크 오류 — API 서버(uvicorn backend.server:app)가 기동 중인지 확인하세요. (${e.message})`);
-  }
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data || data.ok === false) {
-    const msg = (data && data.error && data.error.message) ? data.error.message : `요청 실패 (HTTP ${res.status})`;
-    throw new Error(msg);
-  }
-  return data;
+  return window.AegisApi.get(url);
 }
 
 function buildDocIndex(records) {
@@ -444,9 +439,7 @@ async function selectDocument(docId) {
 // 수행계획서,인터뷰, 녹음, 메모, 회의록 등 항목은 동적으로 추가 가능하도록".
 async function loadDocTypes() {
   try {
-    const res = await fetch(`/doc-types?project_id=${encodeURIComponent(getProjectId())}`);
-    const json = await res.json();
-    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    const json = await window.AegisApi.get(`/doc-types?project_id=${encodeURIComponent(getProjectId())}`);
     const types = json.data.doc_types || [];
     document.getElementById("doc-type-chips").innerHTML = types
       .map(t => `<span class="doc-type-chip${t.custom ? " custom" : ""}" title="${t.code}">${escapeHtml(t.label)}</span>`)
@@ -460,15 +453,10 @@ async function addDocType() {
   const label = await uiPrompt("추가할 문서유형 이름을 입력하세요(예: 회의록, 착수보고서):", "");
   if (!label || !label.trim()) return;
   try {
-    const res = await fetch(`/doc-types?project_id=${encodeURIComponent(getProjectId())}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: label.trim(), actor: getActor() }),
+    await window.AegisApi.post(`/doc-types?project_id=${encodeURIComponent(getProjectId())}`, {
+      label: label.trim(),
+      actor: getActor(),
     });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data || data.ok === false) {
-      throw new Error((data && data.error && data.error.message) || `추가 실패 (HTTP ${res.status})`);
-    }
     await loadDocTypes();
   } catch (e) {
     await uiAlert(`문서유형 추가 실패: ${e.message}`);
@@ -477,9 +465,7 @@ async function addDocType() {
 
 async function init() {
   try {
-    const res = await fetch(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
-    const json = await res.json();
-    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    const json = await window.AegisApi.get(`/requirements?project_id=${encodeURIComponent(getProjectId())}`);
     ALL_RECORDS = json.data.requirements || [];
   } catch (e) {
     document.getElementById("doc-list-scroll").innerHTML = `<div class="empty-state">요구사항 데이터를 불러오지 못했습니다 — file://로 직접 열었거나 서버가 꺼져있을 수 있습니다. 프로젝트 루트에서 ./restart.sh 실행 후 http://127.0.0.1:8899/views/documents.html 로 접속하세요.</div>`;
