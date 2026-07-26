@@ -63,7 +63,8 @@
       '<div class="ai-lnb-group">업무 영역</div>' +
       '<a class="ai-lnb-item" href="project-setup.html">프로젝트 설정</a>' +
       '<a class="ai-lnb-item" href="requirements.html">요구사항 관리</a>' +
-      '<a class="ai-lnb-item" href="preview.html">청크 미리보기</a>';
+      '<a class="ai-lnb-item" href="preview.html">청크 미리보기</a>' +
+      '<a class="ai-lnb-item" href="tasks.html">Task 관리</a>';
     console.warn("[shell-loader] shell-nav.html 로드 실패 — 폴백 네비게이션 표시: " + reason);
   }
 

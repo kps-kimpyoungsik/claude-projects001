@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Task 관리 — AI 개발 태스크 상태·전이</title>
+<link rel="stylesheet" href="../styles/tokens.css" />
+<link rel="stylesheet" href="../styles/components.css" />
+<link rel="stylesheet" href="../styles/shell.css" />
+<style>
+  /*
+    [2026-07-26 신규] REQ→Task 생성·관리 프론트엔드 — 지금까지 backend/adapters/api/
+    tasks_api.py(GET/POST /tasks, POST /tasks/{id}/status)는 구현·테스트돼 있었지만
+    어떤 화면도 호출하지 않던 실측 갭을 메운다(00_PROJECT_CONSTITUTION.md §3의 "AI 개발
+    태스크 생성·관리"가 이 시스템의 본체 목표). 공통 스타일은 components.css 재사용
+    (신규 시각 언어 발명 없음, CRZ), 이 화면 전용 레이아웃·Task 상태 배지만 로컬에 둔다.
+
+    Task.status(DRAFT/READY/IN_PROGRESS/DONE/BLOCKED)는 requirements.html의
+    lifecycle_status(RECEIVED/ACCEPTED/...)와 값 자체가 다른 축이라 components.css의
+    .status-* 클래스를 그대로 쓰면 이름은 같은데 색 의도가 갈리는 혼동이 생길 수 있어
+    (예: 요구사항 쪽 status-IN_PROGRESS는 파랑이지만 사용자 지시는 Task IN_PROGRESS를
+    주황으로 요구) task 전용 클래스(.task-status-*)를 새로 둔다.
+  */
+  .content-body { padding: 24px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.subtitle { color: var(--text-muted); font-size: 14px; margin-top: 0; }
+
+  .task-status-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .task-status-DRAFT { background: var(--hover-tint); color: var(--text-muted); }
+  .task-status-READY { background: color-mix(in srgb, var(--color-brand-primary) 25%, transparent); color: var(--brand-text); }
+  .task-status-IN_PROGRESS { background: color-mix(in srgb, var(--warn) 25%, transparent); color: var(--warn-text); }
+  .task-status-DONE { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok-text); }
+  .task-status-BLOCKED { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger-text); }
+
+  .escalation-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger-text); cursor: help;
+  }
+
+  .req-refs { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+  .task-title-cell { max-width: 320px; }
+  .task-title-cell .task-title { font-weight: 600; }
+  .task-title-cell .task-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; display: block; }
+  .transition-btn { margin: 2px 4px 2px 0; }
+  .transition-btn.to-BLOCKED:hover { border-color: var(--danger); color: var(--danger-text); }
+  .transition-btn.to-DONE:hover { border-color: var(--ok); color: var(--ok-text); }
+  .transition-btn.to-READY:hover, .transition-btn.to-IN_PROGRESS:hover { border-color: var(--color-brand-primary); color: var(--brand-text); }
+  .no-transition { color: var(--text-muted); font-size: 12px; font-style: italic; }
+</style>
+</head>
+<body>
+  <div class="ai-shell">
+    <div class="ai-gnb" id="ai-gnb-slot"></div>
+    <div class="ai-body">
+      <nav class="ai-lnb" id="ai-lnb-slot"></nav>
+      <div class="ai-content">
+        <div class="content-body">
+  <h1>⑥ Task 관리 — AI 개발 태스크 상태·전이</h1>
+  <p class="subtitle">
+    요구사항(REQ)에서 생성된 AI 개발 태스크(Task)의 현재 상태를 확인하고, 허용된 다음
+    단계로 전이시킵니다. <code>BLOCKED</code>/<code>DONE</code> 전이는 사유(reason)가
+    필수이며, "⚠ 검토필요" 배지가 붙은 Task는 사람이 검토를 확인해야만 계속 진행됩니다.
+  </p>
+
+  <div class="summary-row" id="summary-row"></div>
+
+  <div class="actor-bar">
+    행위자(actor):
+    <input type="text" id="actor-input" placeholder="예: hong.gildong" />
+  </div>
+
+  <div class="filters">
+    <input type="text" id="search" placeholder="Task ID·제목 검색..." />
+    <select id="filter-domain"><option value="">전체 도메인</option></select>
+    <select id="filter-status"><option value="">전체 상태</option></select>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th data-key="task_id">Task ID</th>
+        <th data-key="domain_code">도메인</th>
+        <th data-key="title">제목</th>
+        <th data-key="status">상태</th>
+        <th>검토필요</th>
+        <th data-key="source_req_ids">요구사항 근거</th>
+        <th data-key="updated_at">갱신시각</th>
+        <th>액션</th>
+      </tr>
+    </thead>
+    <tbody id="task-tbody"></tbody>
+  </table>
+  <div class="empty-state" id="empty-state" style="display:none;">표시할 Task가 없습니다(필터 조건을 확인하거나, 요구사항 관리 화면에서 "Task 생성"을 먼저 실행하세요).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="../js/project-scope.js"></script>
+<script src="../js/shell-loader.js"></script>
+<script>
+let ALL_TASKS = [];
+let SORT_KEY = "task_id";
+let SORT_DESC = false;
+
+// task_state_machine.py ALLOWED_TRANSITIONS·REASON_REQUIRED_STATUSES를 그대로 미러링한다
+// (requirement_store.py 쪽 REASON_REQUIRED_STATUSES를 requirements.html이 미러링해온 것과
+// 동일 관례 — 서버가 최종 검증하므로 프론트 목록이 stale해도 안전, CRZ).
+const ALLOWED_TRANSITIONS = {
+  DRAFT: ["READY"],
+  READY: ["IN_PROGRESS", "BLOCKED"],
+  IN_PROGRESS: ["DONE", "BLOCKED"],
+  BLOCKED: ["READY", "IN_PROGRESS"],
+  DONE: [],
+};
+const REASON_REQUIRED_STATUSES = new Set(["BLOCKED", "DONE"]);
+const TRANSITION_LABELS = {
+  READY: "READY로 전이",
+  IN_PROGRESS: "IN_PROGRESS로 전이",
+  DONE: "DONE으로 전이",
+  BLOCKED: "BLOCKED로 전이",
+};
+
+function getActor() {
+  let actor = localStorage.getItem("aegis_actor") || "";
+  const input = document.getElementById("actor-input");
+  if (input && !input.value) input.value = actor;
+  return actor || (input ? input.value : "") || "guest";
+}
+
+function setActor(value) {
+  localStorage.setItem("aegis_actor", value || "");
+}
+
+function getProjectId() {
+  return window.AegisProject ? window.AegisProject.getId() : "default";
+}
+
+async function postJSON(url, body) {
+  let res;
+  try {
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch (e) {
+    throw new Error(`네트워크 오류 — API 서버(uvicorn backend.server:app)가 기동 중인지 확인하세요. (${e.message})`);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || data.ok === false) {
+    const msg = (data && data.error && data.error.message) ? data.error.message : `요청 실패 (HTTP ${res.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+// [Phase 5.3 HITL] 서킷 브레이커(needs_escalation=true) Task는 사람이 검토를 확인한
+// 경우에만 override_escalation:true를 함께 보낸다 — 자동으로 true를 보내지 않는다
+// (사용자 지시 — 확인창을 거친 뒤에만 세팅).
+async function changeTaskStatus(taskId, fromStatus, toStatus) {
+  const task = ALL_TASKS.find(t => t.task_id === taskId);
+  if (!task) return;
+
+  if (task.needs_escalation) {
+    const reasons = (task.escalation_reasons || []).join(", ") || "사유 미기재";
+    const confirmed = window.confirm(
+      `이 Task는 검토가 필요합니다(사유: ${reasons}). 검토 완료로 확인하고 계속하시겠습니까?`
+    );
+    if (!confirmed) return;
+  }
+
+  let reason = null;
+  if (REASON_REQUIRED_STATUSES.has(toStatus)) {
+    reason = window.prompt(`${toStatus} 전이 사유를 입력하세요(필수입력):`, "");
+    if (!reason) return; // 취소 또는 빈 입력 — 서버도 필수로 요구하므로 전송하지 않음
+  }
+
+  try {
+    const body = { status: toStatus, actor: getActor() };
+    if (reason) body.reason = reason;
+    if (task.needs_escalation) body.override_escalation = true;
+    const result = await postJSON(
+      `/tasks/${encodeURIComponent(taskId)}/status?project_id=${encodeURIComponent(getProjectId())}`,
+      body
+    );
+    task.status = result.data.status;
+    task.status_history = result.data.status_history;
+    task.needs_escalation = result.data.needs_escalation;
+    task.escalation_reasons = result.data.escalation_reasons;
+    renderSummary(ALL_TASKS);
+    applyFiltersAndRender();
+  } catch (e) {
+    alert(`Task 상태 변경 실패: ${e.message}`);
+  }
+}
+
+function renderSummary(tasks) {
+  const total = tasks.length;
+  const escalated = tasks.filter(t => t.needs_escalation).length;
+  const byStatus = {};
+  tasks.forEach(t => { byStatus[t.status] = (byStatus[t.status] || 0) + 1; });
+  const statusCards = ["DRAFT", "READY", "IN_PROGRESS", "DONE", "BLOCKED"]
+    .filter(s => byStatus[s])
+    .map(s => `<div class="summary-card"><div class="num">${byStatus[s]}</div><div class="label"><span class="task-status-badge task-status-${s}">${s}</span></div></div>`)
+    .join("");
+
+  document.getElementById("summary-row").innerHTML = `
+    <div class="summary-card"><div class="num">${total}</div><div class="label">전체 Task</div></div>
+    <div class="summary-card ${escalated > 0 ? 'danger' : 'ok'}"><div class="num">${escalated}</div><div class="label">검토필요(needs_escalation)</div></div>
+    ${statusCards}
+  `;
+}
+
+function populateFilterOptions(tasks) {
+  const fill = (selectId, key) => {
+    const values = [...new Set(tasks.map(t => t[key]))].filter(Boolean).sort();
+    const select = document.getElementById(selectId);
+    values.forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      select.appendChild(opt);
+    });
+  };
+  fill("filter-domain", "domain_code");
+  fill("filter-status", "status");
+}
+
+function renderActions(task) {
+  const nextStatuses = ALLOWED_TRANSITIONS[task.status] || [];
+  if (nextStatuses.length === 0) {
+    return `<span class="no-transition">전이 없음(terminal)</span>`;
+  }
+  return nextStatuses
+    .map(s => `<button class="action-btn transition-btn to-${s}" onclick="changeTaskStatus('${task.task_id}', '${task.status}', '${s}')">${TRANSITION_LABELS[s] || s + "로 전이"}</button>`)
+    .join("");
+}
+
+function applyFiltersAndRender() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const domain = document.getElementById("filter-domain").value;
+  const status = document.getElementById("filter-status").value;
+
+  let rows = ALL_TASKS.filter(t => {
+    if (domain && t.domain_code !== domain) return false;
+    if (status && t.status !== status) return false;
+    if (q && !(t.task_id.toLowerCase().includes(q) || t.title.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    const av = a[SORT_KEY], bv = b[SORT_KEY];
+    const cmp = typeof av === "number" ? av - bv : String(av || "").localeCompare(String(bv || ""));
+    return SORT_DESC ? -cmp : cmp;
+  });
+
+  const tbody = document.getElementById("task-tbody");
+  tbody.innerHTML = rows.map(t => `
+    <tr>
+      <td><strong>${t.task_id}</strong></td>
+      <td><span class="badge badge-area">${t.domain_code}</span></td>
+      <td class="task-title-cell"><span class="task-title">${(t.title || "").replace(/</g, "&lt;")}</span><span class="task-desc">${(t.description || "").slice(0, 80).replace(/</g, "&lt;")}</span></td>
+      <td><span class="task-status-badge task-status-${t.status}">${t.status}</span></td>
+      <td>${t.needs_escalation ? `<span class="escalation-badge" title="${(t.escalation_reasons || []).join(', ')}">⚠ 검토필요</span>` : ""}</td>
+      <td class="req-refs">${(t.source_req_ids || []).join(", ") || "—"}</td>
+      <td>${t.updated_at || "—"}</td>
+      <td class="actions-cell">${renderActions(t)}</td>
+    </tr>
+  `).join("");
+
+  document.getElementById("empty-state").style.display = rows.length ? "none" : "block";
+}
+
+async function init() {
+  try {
+    const res = await fetch(`/tasks?project_id=${encodeURIComponent(getProjectId())}`);
+    const json = await res.json();
+    if (!res.ok || !json || json.ok === false) throw new Error("응답 실패");
+    ALL_TASKS = json.data.tasks || [];
+  } catch (e) {
+    document.getElementById("empty-state").style.display = "block";
+    document.getElementById("empty-state").textContent = "Task 데이터를 불러오지 못했습니다 — file://로 직접 열었거나 서버가 꺼져있을 수 있습니다. 프로젝트 루트에서 ./restart.sh 실행 후 접속하세요.";
+    return;
+  }
+
+  renderSummary(ALL_TASKS);
+  populateFilterOptions(ALL_TASKS);
+  applyFiltersAndRender();
+
+  const actorInput = document.getElementById("actor-input");
+  actorInput.value = localStorage.getItem("aegis_actor") || "";
+  actorInput.addEventListener("change", () => setActor(actorInput.value.trim()));
+
+  document.getElementById("search").addEventListener("input", applyFiltersAndRender);
+  document.getElementById("filter-domain").addEventListener("change", applyFiltersAndRender);
+  document.getElementById("filter-status").addEventListener("change", applyFiltersAndRender);
+  document.querySelectorAll("th[data-key]").forEach(th => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.key;
+      SORT_DESC = (SORT_KEY === key) ? !SORT_DESC : false;
+      SORT_KEY = key;
+      applyFiltersAndRender();
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>

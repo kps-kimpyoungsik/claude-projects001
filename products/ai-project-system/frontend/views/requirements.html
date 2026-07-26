@@ -48,6 +48,12 @@
   .gate-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
   .gate-BLOCK_MANDATORY { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger-text); }
   .gate-WARN_STRATEGIC { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-text); }
+
+  /* [2026-07-26 신규] "Task 생성" 버튼 — REJECTED/WITHDRAWN은 백엔드가 422로 거부하므로
+     헛클릭 방지를 위해 프론트에서도 동일 조건으로 비활성화(action-btn 전역에는 :disabled
+     규칙이 없어 이 화면에서만 보강, components.css의 .btn:disabled와 동일 시각효과). */
+  .btn-task:hover { border-color: var(--color-brand-primary); color: var(--brand-text); }
+  .btn-task:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
 </style>
 </head>
 <body>
@@ -194,6 +200,23 @@ async function changeStatus(reqId, status) {
 
 // §5-2 — "재청킹 요청" 액션(신규, 2026-07-20). REJECTED와 동일 사유 필수 규칙을 그대로
 // 따른다(backend request_rechunk()가 set_status(REJECTED, reason="[RECHUNK] ...")를 재사용).
+// [2026-07-26 신규] REQ → Task 생성 — backend/adapters/api/requirements_api.py의
+// POST /requirements/{req_id}/generate-task(2026-07-23 신규, 이전 세션 구현)를 어떤
+// 화면도 호출하지 않던 실측 갭을 메운다(00_PROJECT_CONSTITUTION.md §3 핵심 목표).
+// idempotent(재호출 안전) — 이미 생성된 Task가 있으면 already_existed:true로 안내한다.
+async function generateTask(reqId) {
+  try {
+    const result = await postJSON(`/requirements/${encodeURIComponent(reqId)}/generate-task?project_id=${encodeURIComponent(getProjectId())}`, {});
+    if (result.data.already_existed) {
+      alert(`이미 생성된 Task: ${result.data.task_id} (status=${result.data.status})`);
+    } else {
+      alert(`Task 생성 완료: ${result.data.task_id} (status=${result.data.status})`);
+    }
+  } catch (e) {
+    alert(`Task 생성 실패: ${e.message}`);
+  }
+}
+
 async function requestRechunk(reqId) {
   const reason = window.prompt("재청킹 요청 사유를 입력하세요(청킹 경계가 왜 틀렸는지, 필수입력):", "");
   if (!reason) return;
@@ -361,6 +384,7 @@ function applyFiltersAndRender() {
         <button class="action-btn btn-reject" onclick="changeStatus('${r.req_id}', 'REJECTED')">반려</button>
         <button class="action-btn btn-withdraw" onclick="changeStatus('${r.req_id}', 'WITHDRAWN')">철회</button>
         <button class="action-btn btn-rechunk" onclick="requestRechunk('${r.req_id}')" title="청킹 경계 자체가 틀렸을 때(§5)">재청킹 요청</button>
+        <button class="action-btn btn-task" onclick="generateTask('${r.req_id}')" ${(r.lifecycle_status === "REJECTED" || r.lifecycle_status === "WITHDRAWN") ? "disabled" : ""} title="이 요구사항을 근거로 AI 개발 Task를 생성합니다(재호출 안전 — 이미 있으면 기존 Task를 안내)">Task 생성</button>
       </td>
     </tr>
   `).join("");
