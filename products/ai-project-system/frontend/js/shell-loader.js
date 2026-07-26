@@ -157,6 +157,9 @@
         if (statusSelect && select.selectedOptions[0]) {
           statusSelect.value = select.selectedOptions[0].dataset.status || "IMPLEMENTING";
         }
+        // [2026-07-26 Task 3 방어적 수정] 긴 이름이 ellipsis로 잘려도 hover 시 전체
+        // 이름을 확인할 수 있도록 select 자체의 title을 현재 선택된 옵션 텍스트로 갱신.
+        if (select.selectedOptions[0]) select.title = select.selectedOptions[0].textContent;
       })
       .catch(function (e) {
         console.warn("[shell-loader] 프로젝트 목록 로드 실패: " + e.message);
@@ -169,6 +172,7 @@
 
     select.addEventListener("change", function () {
       window.AegisProject.setId(select.value);
+      if (select.selectedOptions[0]) select.title = select.selectedOptions[0].textContent;
       location.reload();
     });
 

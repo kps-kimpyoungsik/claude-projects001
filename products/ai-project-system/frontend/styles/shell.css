@@ -50,6 +50,10 @@ html, body { height: 100%; }
   border: none; background: transparent; color: var(--text-primary);
   font-size: 12px; font-weight: 600; padding: 2px 4px; cursor: pointer;
   max-width: 160px;
+  /* [2026-07-26 Task 3 방어적 수정] 긴 한글 프로젝트명이 잘려도 아무 신호 없이 잘리던
+     문제 — 말줄임표(...)로 "잘렸다"는 사실을 시각화하고, title 속성(shell-loader.js가
+     선택값 변경 시마다 갱신)으로 전체 이름을 hover 시 확인 가능하게 한다. */
+  text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
 }
 .ai-gnb-project-add {
   font-size: 11px; font-weight: 700; border: none; cursor: pointer;

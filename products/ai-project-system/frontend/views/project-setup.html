@@ -149,8 +149,8 @@
       <div class="ai-content">
         <div class="topbar">
           <div class="topbar-main">
-            <h1>① 프로젝트 등록 — 분야 선택 마법사</h1>
-            <span class="hint">프로젝트명·목표·기술영역·인프라·보안 정책을 단계별로 설정합니다 — 여기서 고른 분야는 이후 ③ 요구사항 분류의 기준이 됩니다.</span>
+            <h1 id="wiz-title">① 프로젝트 등록 — 분야 선택 마법사</h1>
+            <span class="hint" id="wiz-hint">프로젝트명·목표·기술영역·인프라·보안 정책을 단계별로 설정합니다 — 여기서 고른 분야는 이후 ③ 요구사항 분류의 기준이 됩니다.</span>
           </div>
         </div>
         <div class="wiz-body">
@@ -352,7 +352,7 @@
               </p>
               <div class="summary-block" id="summary"></div>
               <div class="error-box" id="error-box"></div>
-              <button class="btn primary" onclick="createProject()">프로젝트 생성</button>
+              <button class="btn primary" id="btn-submit" onclick="submitWizard()">프로젝트 생성</button>
               <button class="btn" onclick="downloadConfig()">project_config.json 다운로드</button>
               <a class="btn" href="requirements.html" style="margin-left: 8px; text-decoration: none; display: inline-block;">요구사항 목록으로 이동 →</a>
             </div>
@@ -465,6 +465,13 @@ const state = {
 };
 
 let currentStep = 1;
+
+// [2026-07-26 Task 2 — 편집 모드] `?project_id=X`로 열리면 이 마법사가 신규 생성 대신
+// 기존 프로젝트 편집 모드로 전환된다(요구사항: project-dashboard.html 카드/키워드 클릭
+// 진입점). editMode=false(기본)이면 이 파일의 기존 생성 흐름은 완전히 그대로 동작한다
+// (순수 additive — 이 두 변수 외 기존 로직은 변경 없음, CRZ).
+let editMode = false;
+let editProjectId = null;
 
 function renderSidebar() {
   document.getElementById("sidebar").innerHTML = STEPS.map(s => `
@@ -921,10 +928,27 @@ function renderSummary() {
 // [2026-07-22 고도화] "여러 프로젝트 안에서 관리" — 이 마법사가 만드는 project_config.json
 // (분야·문서유형 세부설정)과는 별개로, 실제 GNB 전환 대상이 되는 ProjectRegistry 엔트리를
 // POST /projects로 실제 생성한다(CRZ — 신규 프로젝트 개념 발명 없음, projects_api.py 재사용).
-async function createProject() {
+// [2026-07-26 Task 2] 이름을 createProject()에서 submitWizard()로 승격 — editMode 여부로
+// "생성"(POST /projects + PUT /project-config)과 "편집 저장"(PATCH /projects/{id} +
+// PUT /project-config)을 분기한다. editMode=false 분기는 기존 createProject() 로직과
+// 완전히 동일(순수 이동, 동작 변경 없음 — CRZ).
+async function submitWizard() {
   const cfg = buildConfig();
   if (!renderSummary()) return;
+  const actor = localStorage.getItem("aegis_actor") || "guest";
   try {
+    if (editMode && editProjectId) {
+      // 이름 변경은 PATCH /projects/{id}(부분수정) — 기간(start_date/end_date)은 이
+      // 마법사에 입력 필드가 없어 그대로 유지(생략 시 미변경, 계약 확인됨).
+      await window.AegisApi.patch(`/projects/${encodeURIComponent(editProjectId)}`, { name: cfg.project_name });
+      // 나머지 세부설정(분야/HA/보안/인프라존 등)은 항상 PUT으로 전체 덮어쓰기(신규
+      // 생성과 동일한 계약 — project_config_api.py PUT은 upsert로 이미 확인됨).
+      await window.AegisApi.put(`/project-config?project_id=${encodeURIComponent(editProjectId)}`, { ...cfg, actor });
+      document.getElementById("error-box").textContent = "";
+      location.href = "project-dashboard.html";
+      return;
+    }
+
     const body = await window.AegisApi.post("/projects", { name: cfg.project_name });
     const projectId = body.data.id;
     if (window.AegisProject) window.AegisProject.setId(projectId);
@@ -932,7 +956,6 @@ async function createProject() {
     // [2026-07-25 §8-9] 지금까지 STEP2~6에서 고른 설정 전체(분야/HA/보안/인프라존 등)를
     // 새로 만든 프로젝트에 영속화한다 — 이전에는 이 단계가 없어 `downloadConfig()` 수동
     // 다운로드 외엔 서버에 저장되지 않았다(project_config_api.py 신규 배선).
-    const actor = localStorage.getItem("aegis_actor") || "guest";
     // 프로젝트 자체는 이미 생성됐으므로 이 단계 실패는 치명적으로 취급하지 않되, 설정
     // 저장 실패는 사용자에게 정직하게 알린다(설정이 서버에 반영 안 됐다는 사실을 숨기지 않음).
     await window.AegisApi.put(`/project-config?project_id=${encodeURIComponent(projectId)}`, { ...cfg, actor });
@@ -940,7 +963,77 @@ async function createProject() {
     document.getElementById("error-box").textContent = "";
     location.href = "requirements.html";
   } catch (e) {
-    document.getElementById("error-box").textContent = `⚠ 프로젝트 생성/설정 저장 실패: ${e.message}`;
+    document.getElementById("error-box").textContent =
+      `⚠ 프로젝트 ${editMode ? "저장" : "생성/설정 저장"} 실패: ${e.message}`;
+  }
+}
+
+// [2026-07-26 Task 2] `?project_id=X`로 열렸을 때 기존 프로젝트 정보를 불러와 전 STEP
+// 필드를 프리필하고 마법사를 편집 모드로 전환한다. GET /projects/{id}가 이미 반환하는
+// merged 구조(registry 필드 + config)를 그대로 소비(신규 API 없음, CRZ).
+async function loadForEdit(projectId) {
+  try {
+    const body = await window.AegisApi.get(`/projects/${encodeURIComponent(projectId)}`);
+    const data = body.data;
+    editMode = true;
+    editProjectId = projectId;
+
+    document.getElementById("f-name").value = data.name || "";
+    const cfg = data.config || {};
+    document.getElementById("f-goal").value = cfg.goal || "";
+
+    state.selectedAreas = new Set(cfg.selected_areas || []);
+    state.selectedLayers = new Set(cfg.selected_layers || []);
+    state.selectedDocTypes = new Set(cfg.selected_doc_types || []);
+    state.solutionStack = cfg.solution_stack || [];
+    state.accessPolicy = cfg.access_policy || "SHARED";
+
+    // HA + 조건부 하위 필드(STEP2) — 기존 setHa()/setToggle()을 그대로 재사용해 버튼
+    // .on 클래스·필드 표시/숨김까지 일관되게 갱신한다(신규 프리필 로직 별도 작성 회피).
+    setHa(!!cfg.is_ha);
+    if (cfg.is_ha) {
+      if (cfg.ha_management) document.getElementById("f-ha-management").value = cfg.ha_management;
+      setToggle("uses_websocket", !!cfg.uses_websocket);
+      if (cfg.realtime_backplane) document.getElementById("f-backplane").value = cfg.realtime_backplane;
+      setToggle("uses_grid", !!cfg.uses_grid);
+      if (cfg.grid_solution) document.getElementById("f-grid-solution").value = cfg.grid_solution;
+      setToggle("has_ai_workload", !!cfg.has_ai_workload);
+      if (cfg.llm_solution) document.getElementById("f-llm-solution").value = cfg.llm_solution;
+      if (cfg.llm_server_info) document.getElementById("f-llm-server-info").value = cfg.llm_server_info;
+      setToggle("has_report", !!cfg.has_report);
+      if (cfg.report_solution) document.getElementById("f-report-solution").value = cfg.report_solution;
+    }
+
+    setSecurityLevel(cfg.security_level || "standard");
+    if (cfg.tls_cert_type) document.getElementById("f-tls-cert-type").value = cfg.tls_cert_type;
+    if (cfg.password_hash_algo) document.getElementById("f-password-hash").value = cfg.password_hash_algo;
+    onPasswordHashChange();
+
+    // 인프라 구성(STEP3) — setInfraConfigured(true)가 내부에서 zones/servers/rules 그리드와
+    // 토폴로지를 전부 다시 그린다(기존 STEP3 렌더 함수 재사용, 신규 함수 없음).
+    state.infra_zones = cfg.infra_zones || [];
+    state.infra_servers = cfg.infra_servers || [];
+    state.infra_allow_rules = cfg.infra_allow_rules || [];
+    setInfraConfigured(!!cfg.infra_configured);
+
+    renderCardGrid("areas-grid", AREA_CODES, state.selectedAreas, "toggleArea");
+    renderCardGrid("layers-grid", LAYER_CODES, state.selectedLayers, "toggleLayer");
+    renderDocTypeGrid();
+    renderTags();
+    renderPolicyCards();
+    renderArchSummary();
+    renderArchTopology();
+
+    var titleEl = document.getElementById("wiz-title");
+    if (titleEl) titleEl.textContent = "① 프로젝트 편집 — " + (data.name || "");
+    var hintEl = document.getElementById("wiz-hint");
+    if (hintEl) hintEl.textContent = "기존 프로젝트의 설정을 수정합니다 — 저장 시 이름은 PATCH, 나머지 세부설정은 project-config로 갱신됩니다.";
+    var submitBtn = document.getElementById("btn-submit");
+    if (submitBtn) submitBtn.textContent = "저장";
+  } catch (e) {
+    console.warn(`[project-setup] project_id=${projectId} 편집 로드 실패: ${e.message}`);
+    document.getElementById("error-box").textContent =
+      `⚠ 편집 대상 프로젝트를 불러오지 못해 신규 생성 모드로 유지합니다 (${e.message})`;
   }
 }
 
@@ -1027,6 +1120,12 @@ function init() {
 
   goStep(1);
   loadCustomDocTypes();  // 실패해도 마법사 진행을 막지 않음(내부에서 catch)
+
+  // [2026-07-26 Task 2] ?project_id=X 쿼리파라미터가 있으면 편집 모드로 전환. 파라미터가
+  // 없으면 이 블록 전체가 no-op이라 기존 생성 흐름은 완전히 그대로다(순수 additive).
+  const params = new URLSearchParams(location.search);
+  const editPid = params.get("project_id");
+  if (editPid) loadForEdit(editPid);
 }
 
 init();

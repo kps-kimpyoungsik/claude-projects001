@@ -206,6 +206,15 @@ th:hover { color: var(--text-primary); }
 }
 .progress-elapsed { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
+/* ── 확정 진행률 막대(determinate) — 위 .progress-indeterminate와 짝을 이루는 반대
+   케이스(2026-07-26 project-dashboard.html 신설). 실제 %가 있을 때(progress.progress_pct)
+   쓰는 일반 공용 바 — 줄무늬 애니메이션 없이 폭만 채운다("얼마나 걸릴지 모름"이 아니라
+   "얼마나 됐는지 안다"는 정직한 신호, T98 AIP 정합). 화면 2곳 이상에서 재사용 가능하도록
+   여기 승격(CRZ — 화면 로컬 중복 정의 방지). */
+.progress-bar-wrap { height: 8px; border-radius: 999px; overflow: hidden; background: var(--hover-tint); }
+.progress-bar-fill { height: 100%; border-radius: 999px; background: var(--color-brand-primary); transition: width .2s ease; }
+.progress-bar-fill.complete { background: var(--ok); }
+
 /* 완료 시 잠깐 강조(성공 플래시) — 정적 텍스트 한 줄만으로는 "완료됐다"는 사실이
    눈에 잘 안 띈다는 지적 보강(사용자: "동작이 인지가 안돼"). 새 색상 발명 없음(--ok 재사용). */
 @keyframes flash-success-bg {
