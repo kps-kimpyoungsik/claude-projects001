@@ -38,6 +38,26 @@
     });
   }
 
+  /*
+   * [2026-07-27 X-API-Key 설정 진입점] backend/adapters/api/auth.py의 opt-in 게이트가
+   * 활성화된 배포 환경(AIPS_API_KEY 설정됨)에서만 관리자/사용자가 브라우저별로 키를
+   * 입력하면 되는 최소 진입점 — 별도 설정 화면을 새로 만들지 않고 GNB 버튼 + uiPrompt로
+   * 충분하다(과잉설계 회피, CRZ). 저장은 frontend/js/api.js의 AegisApi.setApiKey 단일
+   * 창구를 통해서만 한다(저장 로직 중복 금지).
+   */
+  function initApiKeyButton(gnb) {
+    var btn = gnb.querySelector("#ai-gnb-api-key-btn");
+    if (!btn || !window.AegisApi) return;
+    btn.addEventListener("click", function () {
+      var current = window.AegisApi.getApiKey() || "";
+      var showPrompt = window.uiPrompt || function (m, d) { return Promise.resolve(window.prompt(m, d)); };
+      showPrompt("API 키(X-API-Key)를 입력하세요. 서버 인증이 비활성화된 경우 비워두면 됩니다:", current).then(function (value) {
+        if (value === null || value === undefined) return; // 취소
+        window.AegisApi.setApiKey(value);
+      });
+    });
+  }
+
   function initLnbCollapse(lnb) {
     var btn = lnb.querySelector("#ai-lnb-toggle-btn");
     if (!btn) return;
@@ -101,6 +121,7 @@
 
         initProjectSwitcher(gnb);
         initThemeToggle(gnb);
+        initApiKeyButton(gnb);
         initLnbCollapse(lnb);
       })
       .catch(function (e) {
