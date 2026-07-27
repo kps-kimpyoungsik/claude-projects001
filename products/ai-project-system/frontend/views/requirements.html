@@ -300,12 +300,18 @@ async function requestRechunk(reqId) {
   }, 1000);
 
   try {
+    // [2026-07-27 근본전환] documents.html의 uploadDocument()와 동일한 이유로 이 요청도
+    // 더 이상 파이프라인이 끝날 때까지 기다리지 않는다 — 202 + job_id를 즉시 받고
+    // pollRechunkJob()이 GET /documents/jobs/{job_id}를 폴링한다(upload와 동일한 폴링
+    // 엔드포인트 재사용, kind="rechunk"로만 구분 — 신규 엔드포인트 없음, CRZ).
     const body = { reason, actor: getActor() };
-    const result = await postJSON(`/documents/${encodeURIComponent(docId)}/rechunk?project_id=${encodeURIComponent(getProjectId())}`, body);
+    const submitResp = await postJSON(`/documents/${encodeURIComponent(docId)}/rechunk?project_id=${encodeURIComponent(getProjectId())}`, body);
+    const jobId = submitResp.data.job_id;
+    const result = await pollRechunkJob(jobId);
     statusEl.className = "rechunk-status ok flash-success";
     statusEl.textContent =
-      `재청킹 완료: 기존 ${result.data.withdrawn_req_ids.length}건 철회, 새 청크 ${result.data.chunk_count}개 · ` +
-      `요구사항 ${result.data.requirements_created.length}건 재채번(미분류 ${result.data.unclassified_chunk_count}개).`;
+      `재청킹 완료: 기존 ${result.withdrawn_req_ids.length}건 철회, 새 청크 ${result.chunk_count}개 · ` +
+      `요구사항 ${result.requirements_created.length}건 재채번(미분류 ${result.unclassified_chunk_count}개).`;
 
     // 목록 전체를 다시 불러온다 — 이 요청 하나로 문서 전체의 REQ 구성(WITHDRAWN 처리된
     // 옛 항목 + 새로 채번된 항목)이 바뀌므로, 화면의 record 하나만 patch하는 것으로는
@@ -321,6 +327,22 @@ async function requestRechunk(reqId) {
     clearInterval(elapsedTimer);
     progressEl.style.display = "none";
     elapsedEl.style.display = "none";
+  }
+}
+
+// [2026-07-27 신규] documents.html의 pollUploadJob()과 동일한 패턴 — 같은 폴링 엔드포인트를
+// 공유하지만(kind="rechunk") 이 화면 전용 함수로 분리한다(두 view가 서로의 내부 함수를
+// 직접 참조하지 않는 기존 구조를 그대로 유지, CRZ).
+async function pollRechunkJob(jobId, intervalMs = 1500) {
+  for (;;) {
+    const body = await window.AegisApi.get(`/documents/jobs/${encodeURIComponent(jobId)}`);
+    const status = body.data.status;
+    if (status === "done") return body.data.result;
+    if (status === "failed") {
+      const msg = (body.data.error && body.data.error.message) || "재청킹 처리 중 알 수 없는 오류가 발생했습니다";
+      throw new Error(msg);
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 }
 

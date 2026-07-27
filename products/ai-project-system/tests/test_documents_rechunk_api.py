@@ -1,11 +1,4 @@
-"""POST /documents/{doc_id}/rechunk — 실제 재청킹 실행기 테스트(2026-07-26 신규).
-
-기존 `POST /requirements/{req_id}/rechunk`("재청킹 요청")는 이름과 달리 청킹을 재실행하지
-않고 REQ 1건을 REJECTED로 표시만 했다(실측 확인 갭). 이 테스트는 새로 만든 문서 단위
-재청킹 실행기가 실제로 (1) 기존 REQ를 WITHDRAWN 처리하고 (2) 저장된 원문을 다시 청킹해
-새 REQ를 채번하는지 검증한다. fixture는 test_documents_upload_api.py와 동일한 monkeypatch
-격리 패턴을 재사용한다(신규 로직 없음, CRZ).
-"""
+"""POST /documents/{doc_id}/rechunk -- 202+job_id+polling conversion test file (2026-07-27)."""
 
 import io
 
@@ -16,6 +9,7 @@ from backend.adapters.api import documents_api, requirements_api
 from backend.adapters.persistence.document_store import DocumentStore
 from backend.adapters.persistence.requirement_store import RequirementStore
 from backend.server import app
+from tests._job_polling import poll_job_until_done
 
 
 @pytest.fixture
@@ -42,8 +36,11 @@ def _upload_sample(test_client):
         files={"file": ("sample.txt", io.BytesIO(content), "text/plain")},
         data={"actor": "tester"},
     )
-    assert resp.status_code == 200
-    return resp.json()["data"]
+    assert resp.status_code == 202, resp.text
+    job_id = resp.json()["data"]["job_id"]
+    body = poll_job_until_done(test_client, job_id)
+    assert body["data"]["status"] == "done", body
+    return body["data"]["result"]
 
 
 def test_rechunk_withdraws_old_and_creates_new(client):
@@ -51,35 +48,34 @@ def test_rechunk_withdraws_old_and_creates_new(client):
     upload_data = _upload_sample(test_client)
     doc_id = upload_data["doc_id"]
     original_req_ids = set(upload_data["requirements_created"])
-    assert original_req_ids, "업로드에서 요구사항이 하나도 생성되지 않음 — 테스트 전제 위반"
+    assert original_req_ids, "no requirements created from upload -- test precondition violated"
 
     resp = test_client.post(
         f"/documents/{doc_id}/rechunk",
-        json={"actor": "tester2", "reason": "청킹 경계가 문장 중간에서 잘림"},
+        json={"actor": "tester2", "reason": "chunk boundary cut mid-sentence"},
     )
+    assert resp.status_code == 202, resp.text
+    job_id = resp.json()["data"]["job_id"]
+    body = poll_job_until_done(test_client, job_id)
 
-    assert resp.status_code == 200
-    body = resp.json()
     assert body["ok"] is True
-    data = body["data"]
+    assert body["data"]["status"] == "done"
+    data = body["data"]["result"]
     assert data["doc_id"] == doc_id
     assert set(data["withdrawn_req_ids"]) == original_req_ids
-    assert data["requirements_created"], "재청킹으로 새 REQ가 하나도 생성되지 않음"
+    assert data["requirements_created"], "rechunk created no new requirements"
 
-    # 옛 REQ는 물리 삭제가 아니라 WITHDRAWN으로 남아있어야 한다(감사 이력 보존).
     all_records = {r.req_id: r for r in req_store.list_all()}
     for old_id in original_req_ids:
         assert all_records[old_id].lifecycle_status == "WITHDRAWN"
         assert "[RECHUNK]" in all_records[old_id].status_history[-1]["reason"]
 
-    # 새 REQ는 이 문서에서 나온 것으로 기록되고 옛 REQ와 겹치지 않는 새 ID다.
     new_ids = set(data["requirements_created"])
     assert new_ids.isdisjoint(original_req_ids)
     for new_id in new_ids:
         assert all_records[new_id].doc_id == doc_id
         assert all_records[new_id].lifecycle_status != "WITHDRAWN"
 
-    # 원문은 그대로 보존돼야 한다(재청킹이 원문 자체를 훼손하지 않음).
     assert doc_store.load(doc_id) is not None
 
 

@@ -28,6 +28,7 @@ from backend.adapters.api import requirements_api
 from backend.adapters.persistence import file_lock, project_scope
 from backend.adapters.persistence.document_store import InvalidDocIdError, _validate_doc_id
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
+from backend.application.services import job_registry
 from backend.application.services.document_upload_service import (
     NotImplementedUploadFormatError,
     UnsupportedUploadFormatError,
@@ -61,17 +62,27 @@ def _page_image_cache_dir(doc_id: str, project_id: str) -> Path:
     return project_scope.resolve_project_data_dir(project_id) / "page_images" / doc_id
 
 
-@router.post("/upload")
+@router.post("/upload", status_code=202)
 async def upload_document(
     file: UploadFile = File(...),
     actor: str = Form(...),
     project_id: str = Form(DEFAULT_PROJECT_ID),
 ):
-    """[2026-07-22 신규] 문서 업로드 → 파싱 → 청킹 → 분류·채번 실제 HTTP 엔드포인트.
+    """[2026-07-22 신규, 2026-07-27 202+job_id+폴링 전환] 문서 업로드 → 파싱 → 청킹 →
+    분류·채번 실제 HTTP 엔드포인트.
 
-    `document_upload_service.process_uploaded_file`이 지금까지 테스트에서만 직접
-    호출되고 실제 라우트에 배선되지 않았던 갭을 메운다(§W-5 실측으로 2026-07-22 발견).
-    신규 비즈니스 로직 없음(CRZ) — 기존 서비스 함수를 그대로 호출만 한다.
+    [2026-07-27 근본전환, 사용자 결정] 이전에는 이 코루틴 하나가 파싱→(LibreOffice 변환
+    최대 120초)→SPCEngine 청킹(Ollama 최대 60초)→분류·채번 전체를 끝날 때까지 동기
+    실행해, 단일 uvicorn 워커의 이벤트 루프를 그 시간만큼 통째로 막았다(다른 요청도 함께
+    대기 — `frontend/views/documents.html`의 불확정 진행바는 그 사실을 정직하게 보여주는
+    UI 완화책이었을 뿐 근본 구조는 그대로였다). 이제는 업로드 바이트를 받은 즉시(빠른
+    동기 구간은 그대로 유지 — `await file.read()` + 빈 파일 검증) 실제 파이프라인을
+    `job_registry.submit_job()`으로 백그라운드 스레드에 넘기고 `202 Accepted` + `job_id`를
+    즉시 반환한다. 클라이언트는 `GET /documents/jobs/{job_id}`를 폴링해 완료를 확인한다
+    (Redis/arq/celery 등 신규 외부 인프라 도입 없음 — `job_registry.py`가 표준
+    `ThreadPoolExecutor` 하나로만 구현, 동시성 설계 근거는 그 모듈 docstring 참고).
+
+    신규 비즈니스 로직 없음(CRZ) — 기존 `process_uploaded_file()`을 그대로 호출만 한다.
     """
     content = await file.read()
     if not content:
@@ -82,52 +93,80 @@ async def upload_document(
 
     req_store = requirements_api.get_requirement_store(project_id)
     doc_store = requirements_api.get_document_store(project_id)
+    filename = file.filename or "unnamed"
 
-    try:
-        result = process_uploaded_file(
-            filename=file.filename or "unnamed",
-            content=content,
-            actor=actor,
-            req_store=req_store,
-            doc_store=doc_store,
-        )
-    except UnsupportedUploadFormatError as exc:
-        return JSONResponse(status_code=422, content=requirements_api.error_envelope("AEGIS-VALIDATION", str(exc)))
-    except NotImplementedUploadFormatError as exc:
-        return JSONResponse(status_code=422, content=requirements_api.error_envelope("AEGIS-VALIDATION", str(exc)))
-    except ValueError as exc:
-        return JSONResponse(status_code=422, content=requirements_api.error_envelope("AEGIS-VALIDATION", str(exc)))
+    def _run_upload_job() -> dict:
+        try:
+            result = process_uploaded_file(
+                filename=filename,
+                content=content,
+                actor=actor,
+                req_store=req_store,
+                doc_store=doc_store,
+            )
+        except (UnsupportedUploadFormatError, NotImplementedUploadFormatError, ValueError) as exc:
+            # job_registry.submit_job()의 공통 예외 처리기가 이 속성을 읽어 폴링 응답의
+            # error.code로 노출한다 — 기존 동기 경로가 반환하던 "AEGIS-VALIDATION" 422와
+            # 동일한 코드를 그대로 유지한다(사용자에게 보이는 오류 문구·분류를 바꾸지 않음).
+            exc.aegis_error_code = "AEGIS-VALIDATION"  # type: ignore[attr-defined]
+            raise
 
-    # [2026-07-25 §8 갭 해소, directive D-d65a28f2 + W4 확장] result.pdf_bytes_for_page_render는
-    # 원본이 PDF였거나(그대로) DOCX/PPTX가 LibreOffice로 PDF 변환에 성공한 경우(§8 W4)에만
-    # 채워진다 — 원본 확장자가 아니라 이 필드 존재 여부로 저장 여부를 결정한다(변환된 PDF도
-    # 페이지 이미지 렌더링이 동작해야 하므로). None이면(변환 실패/미해당 포맷) 저장하지
-    # 않는다(그 경우 page_number/bbox도 None이라 §8-6 폴백으로 텍스트 하이라이트만 쓰임).
-    if result.pdf_bytes_for_page_render is not None:
-        raw_path = _original_pdf_path(result.doc_id, project_id)
-        raw_path.parent.mkdir(parents=True, exist_ok=True)
-        raw_path.write_bytes(result.pdf_bytes_for_page_render)
+        # [2026-07-25 §8 갭 해소, directive D-d65a28f2 + W4 확장] result.pdf_bytes_for_page_render는
+        # 원본이 PDF였거나(그대로) DOCX/PPTX가 LibreOffice로 PDF 변환에 성공한 경우(§8 W4)에만
+        # 채워진다 — 원본 확장자가 아니라 이 필드 존재 여부로 저장 여부를 결정한다(변환된 PDF도
+        # 페이지 이미지 렌더링이 동작해야 하므로). None이면(변환 실패/미해당 포맷) 저장하지
+        # 않는다(그 경우 page_number/bbox도 None이라 §8-6 폴백으로 텍스트 하이라이트만 쓰임).
+        if result.pdf_bytes_for_page_render is not None:
+            raw_path = _original_pdf_path(result.doc_id, project_id)
+            raw_path.parent.mkdir(parents=True, exist_ok=True)
+            raw_path.write_bytes(result.pdf_bytes_for_page_render)
 
-    # [2026-07-25 고도화] 업로드로 채번된 Requirement들도 수동 등록 경로(requirements_api.
-    # create_requirement_manual)와 동일하게 그래프 동기화한다(CRZ — sync_requirement_to_graph
-    # 재사용, 신규 동기화 로직 없음). 이 엔드포인트는 원래 req_store 쓰기 자체가 락으로
-    # 보호되지 않는 기존 갭이 있으나(별도 이슈, 이번 범위 밖 — directive로 표면화 예정),
-    # 그래프 파일만은 file_lock.write_lock으로 감싸 read-modify-write 경합을 막는다
-    # (2026-07-26 소유 위치 이동 — requirements_api._write_lock과 동일 객체, CRZ).
-    with file_lock.write_lock:
-        for created_record in result.requirements_created:
-            requirements_api.sync_requirement_to_graph(created_record, project_id)
+        # [2026-07-25 고도화] 업로드로 채번된 Requirement들도 수동 등록 경로(requirements_api.
+        # create_requirement_manual)와 동일하게 그래프 동기화한다(CRZ — sync_requirement_to_graph
+        # 재사용, 신규 동기화 로직 없음). 이 엔드포인트는 원래 req_store 쓰기 자체가 락으로
+        # 보호되지 않는 기존 갭이 있으나(별도 이슈, 이번 범위 밖 — directive로 표면화 예정),
+        # 그래프 파일만은 file_lock.write_lock으로 감싸 read-modify-write 경합을 막는다
+        # (2026-07-26 소유 위치 이동 — requirements_api._write_lock과 동일 객체, CRZ).
+        with file_lock.write_lock:
+            for created_record in result.requirements_created:
+                requirements_api.sync_requirement_to_graph(created_record, project_id)
 
-    return requirements_api.envelope(
-        ok=True,
-        data={
+        return {
             "doc_id": result.doc_id,
             "doc_filename": result.doc_filename,
             "chunk_count": result.chunk_count,
             "requirements_created": [r.req_id for r in result.requirements_created],
             "unclassified_chunk_count": result.unclassified_chunk_count,
-        },
-    )
+        }
+
+    job_id = job_registry.submit_job("upload", _run_upload_job)
+    return requirements_api.envelope(ok=True, data={"job_id": job_id, "status": "queued", "kind": "upload"})
+
+
+@router.get("/jobs/{job_id}")
+def get_document_job(job_id: str):
+    """[2026-07-27 신규] 업로드·재청킹 백그라운드 잡의 진행 상태 폴링 엔드포인트.
+
+    `job_registry.get_job()`이 없는 job_id에 대해 None을 반환하면 404로 변환한다(폴링
+    대상이 아예 존재하지 않는 것과 "아직 처리 중"을 구분 — T98 AIP). `status`가
+    `"done"`이면 기존 동기 응답과 동일한 shape을 `result`에 담고, `"failed"`면 `error`에
+    `{code, message}`를 담는다 — 두 경우 모두 HTTP 200 + envelope `ok:true`다(이 폴링
+    요청 자체는 성공했다는 뜻이고, 잡 자체의 성공/실패는 `data.status`로 구분한다).
+    """
+    record = job_registry.get_job(job_id)
+    if record is None:
+        return JSONResponse(
+            status_code=404,
+            content=requirements_api.error_envelope("AEGIS-NOTFOUND", f"존재하지 않는 job_id: {job_id}"),
+        )
+
+    data: dict = {"job_id": record.job_id, "kind": record.kind, "status": record.status}
+    if record.status == "done":
+        data["result"] = record.result
+    elif record.status == "failed":
+        data["error"] = record.error
+
+    return requirements_api.envelope(ok=True, data=data)
 
 
 class RechunkDocumentRequest(BaseModel):
@@ -138,19 +177,27 @@ class RechunkDocumentRequest(BaseModel):
     reason: str = Field(..., min_length=1)
 
 
-@router.post("/{doc_id}/rechunk")
+@router.post("/{doc_id}/rechunk", status_code=202)
 def rechunk_document_endpoint(
     doc_id: str,
     body: RechunkDocumentRequest,
     project_id: str = Query(DEFAULT_PROJECT_ID),
 ):
-    """[2026-07-26 신규, directive 실증실행] 문서 원본을 재업로드하지 않고 실제로 다시
-    청킹한다 — 지금까지 `requirements_api.request_rechunk()`("재청킹 요청")는 이름과
-    달리 청킹을 재실행하지 않고 REQ 1건을 REJECTED로 표시만 했다(실측 확인, T98 AIP
+    """[2026-07-26 신규, 2026-07-27 202+job_id+폴링 전환] 문서 원본을 재업로드하지 않고
+    실제로 다시 청킹한다 — 지금까지 `requirements_api.request_rechunk()`("재청킹 요청")는
+    이름과 달리 청킹을 재실행하지 않고 REQ 1건을 REJECTED로 표시만 했다(실측 확인, T98 AIP
     갭). `DocumentStore`가 원문 마크다운을 폐기하지 않고 항상 보관한다는 사실(§DocumentStore
     docstring)을 근거로, 그 원문을 다시 청킹해 이 문서의 기존 REQ 전체를 WITHDRAWN
     처리하고 새 REQ를 채번하는 실제 실행기를 신설한다(CRZ — 새 채번·상태전이 로직 없음,
     `document_upload_service.rechunk_document()`가 기존 함수만 재사용해 조립).
+
+    [2026-07-27 근본전환] `upload_document()`와 동일한 이유(단일 uvicorn 워커 이벤트
+    루프 블로킹, `requirements.html`의 `requestRechunk()` 불확정 진행바가 완화하던 바로
+    그 구조)로 재청킹도 `job_registry.submit_job()` 백그라운드 스레드 + `202 Accepted` +
+    `job_id`로 전환한다. 폴링은 upload와 동일한 `GET /documents/jobs/{job_id}`를 그대로
+    재사용한다(kind="rechunk"로 구분 — 신규 폴링 엔드포인트 발명 없음, CRZ).
+    doc_id 존재 확인(404)은 기존과 동일하게 빠른 동기 구간에서 즉시 수행한다(무거운
+    파이프라인이 아니라 파일 존재 확인일 뿐이라 job으로 미룰 이유가 없음).
     """
     req_store = requirements_api.get_requirement_store(project_id)
     doc_store = requirements_api.get_document_store(project_id)
@@ -175,31 +222,32 @@ def rechunk_document_endpoint(
             content=requirements_api.error_envelope("AEGIS-NOTFOUND", f"존재하지 않는 doc_id: {doc_id}"),
         )
 
-    with file_lock.write_lock:
-        result = rechunk_document(
-            doc_id=doc_id,
-            content=content,
-            actor=body.actor,
-            reason=body.reason,
-            req_store=req_store,
-            pdf_source=pdf_source,
-        )
-        # upload_document()와 동일하게(§ 위 참고) 새로 채번된 REQ만 그래프에 동기화한다
-        # (WITHDRAWN된 옛 REQ는 그래프 동기화 대상이 아님 — sync_requirement_to_graph는
-        # "새로 생긴 노드"를 위한 함수, CRZ).
-        for created_record in result.requirements_created:
-            requirements_api.sync_requirement_to_graph(created_record, project_id)
+    def _run_rechunk_job() -> dict:
+        with file_lock.write_lock:
+            result = rechunk_document(
+                doc_id=doc_id,
+                content=content,
+                actor=body.actor,
+                reason=body.reason,
+                req_store=req_store,
+                pdf_source=pdf_source,
+            )
+            # upload_document()와 동일하게(§ 위 참고) 새로 채번된 REQ만 그래프에 동기화한다
+            # (WITHDRAWN된 옛 REQ는 그래프 동기화 대상이 아님 — sync_requirement_to_graph는
+            # "새로 생긴 노드"를 위한 함수, CRZ).
+            for created_record in result.requirements_created:
+                requirements_api.sync_requirement_to_graph(created_record, project_id)
 
-    return requirements_api.envelope(
-        ok=True,
-        data={
+        return {
             "doc_id": result.doc_id,
             "chunk_count": result.chunk_count,
             "requirements_created": [r.req_id for r in result.requirements_created],
             "unclassified_chunk_count": result.unclassified_chunk_count,
             "withdrawn_req_ids": result.withdrawn_req_ids,
-        },
-    )
+        }
+
+    job_id = job_registry.submit_job("rechunk", _run_rechunk_job)
+    return requirements_api.envelope(ok=True, data={"job_id": job_id, "status": "queued", "kind": "rechunk"})
 
 
 @router.get("/{doc_id}/chunk-map")
