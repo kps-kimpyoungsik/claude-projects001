@@ -148,6 +148,19 @@ class ProjectRegistry(ProjectStorePort):
         self._save_raw(records)
         return project
 
+    def delete(self, project_id: str) -> bool:
+        """[2026-07-27 신설] **원자적 생성 롤백 전용** — 일반 삭제 UX가 아니다(그건
+        `update_status(..., "ARCHIVED")` soft-delete가 전담, CRZ). `ProjectConfigStore.save()`
+        실패 직후 방금 이 프로세스가 만든 registry 레코드를 되돌리기 위한 보상(compensating)
+        삭제만 지원한다(`project_creation_service.create_project_atomic` 전용 호출부).
+        존재하지 않으면 조용히 False(이미 없는 것도 목표 상태이므로 예외로 취급하지 않음)."""
+        records = self._load_raw()
+        filtered = [r for r in records if r["id"] != project_id]
+        if len(filtered) == len(records):
+            return False
+        self._save_raw(filtered)
+        return True
+
     def update_status(self, project_id: str, status: str) -> Project:
         """상태 전이(WAITING/IMPLEMENTING/VERIFIED) — 지금까지 `create()`가 고정값
         "IMPLEMENTING"으로만 만들고 그 뒤 바꿀 수단이 없던 기능 갭을 메운다(2026-07-23

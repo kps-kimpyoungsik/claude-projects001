@@ -218,6 +218,107 @@ def test_get_project_progress_not_found_returns_404(client):
     assert res.status_code == 404
 
 
+# [2026-07-27 신설] 원자적 생성(`POST /projects` + `config` 필드) — 사용자 지시로 확정된
+# 방향: registry.create() + ProjectConfigStore.save()를 한 요청 안에서 원자적으로 묶는다.
+
+
+def test_create_project_atomic_persists_registry_and_config(client):
+    test_client, _ = client
+    res = test_client.post(
+        "/projects",
+        json={
+            "name": "원자적 생성 프로젝트",
+            "config": {"goal": "목표 문장", "selected_areas": ["WEB"]},
+            "actor": "tester",
+        },
+    )
+    assert res.status_code == 200
+    project_id = res.json()["data"]["id"]
+
+    detail = test_client.get(f"/projects/{project_id}").json()["data"]
+    assert detail["config"]["goal"] == "목표 문장"
+    assert detail["config"]["selected_areas"] == ["WEB"]
+
+
+def test_create_project_atomic_rolls_back_registry_on_config_failure(client, monkeypatch):
+    test_client, registry = client
+
+    from backend.adapters.persistence.project_config_store import ProjectConfigStore
+
+    def _boom(self, config, created_by):
+        raise RuntimeError("simulated config save failure")
+
+    monkeypatch.setattr(ProjectConfigStore, "save", _boom)
+
+    res = test_client.post(
+        "/projects",
+        json={
+            "name": "롤백되어야 할 프로젝트",
+            "config": {"goal": "목표", "selected_areas": ["WEB"]},
+            "actor": "tester",
+        },
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "AEGIS-VALIDATION"
+
+    # 실패한 요청이 만든 이름의 registry 레코드가 남아있으면 안 된다(고아 방지).
+    listed = test_client.get("/projects").json()["data"]["projects"]
+    assert all(p["name"] != "롤백되어야 할 프로젝트" for p in listed)
+
+
+def test_create_project_atomic_registry_failure_leaves_no_orphan_config(client):
+    test_client, _ = client
+    # 빈 이름은 registry.create()가 즉시 거부 — config_store.save()는 호출조차 되지 않아야
+    # 하므로, 이 project_id 자체가 만들어지지 않는다(비교 대상 config 파일도 생기지 않음).
+    res = test_client.post(
+        "/projects",
+        json={"name": "   ", "config": {"goal": "목표", "selected_areas": ["WEB"]}, "actor": "tester"},
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "AEGIS-VALIDATION"
+
+
+def test_create_project_without_config_keeps_backward_compatible_contract(client):
+    """`config`를 생략하면 기존 계약(레지스트리 엔트리만 생성) 그대로 — 회귀 없음."""
+    test_client, _ = client
+    res = test_client.post("/projects", json={"name": "설정 없이 생성"})
+    assert res.status_code == 200
+    project_id = res.json()["data"]["id"]
+
+    detail = test_client.get(f"/projects/{project_id}").json()["data"]
+    assert detail["config"] is None
+
+
+# [2026-07-27 신설] GET /projects/_consistency-check — 고아 실측 탐지(자동수정 없음).
+
+
+def test_consistency_check_reports_project_without_config(client):
+    test_client, _ = client
+    created = test_client.post("/projects", json={"name": "설정 없는 프로젝트"}).json()["data"]
+
+    res = test_client.get("/projects/_consistency-check")
+    assert res.status_code == 200
+    data = res.json()["data"]
+    # DEFAULT_PROJECT_ID도 config가 없으면 함께 잡힐 수 있으므로(list_all()의 가상
+    # 포함, 이 fixture의 tmp_path엔 default config가 없음) 개수가 아니라 방금 만든
+    # project_id가 포함되는지로 확인한다.
+    assert created["id"] in data["projects_without_config"]
+
+
+def test_consistency_check_clean_when_config_saved(client):
+    test_client, _ = client
+    created = test_client.post("/projects", json={"name": "설정 있는 프로젝트"}).json()["data"]
+    test_client.put(
+        "/project-config",
+        params={"project_id": created["id"]},
+        json={"project_name": created["name"], "goal": "목표", "selected_areas": ["WEB"], "actor": "tester"},
+    )
+
+    res = test_client.get("/projects/_consistency-check")
+    data = res.json()["data"]
+    assert created["id"] not in data["projects_without_config"]
+
+
 def test_get_project_progress_counts_done_tasks(client):
     test_client, _ = client
     created = test_client.post("/projects", json={"name": "태스크 있는 프로젝트"}).json()["data"]

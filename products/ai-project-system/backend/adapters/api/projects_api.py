@@ -20,12 +20,17 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from backend.adapters.api.auth import require_api_key
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.adapters.api import project_config_api, tasks_api
 from backend.adapters.api.requirements_api import envelope, error_envelope
 from backend.adapters.persistence.file_lock import write_lock as _write_lock
 from backend.adapters.persistence.project_registry import ProjectRegistry, ProjectValidationError
+from backend.application.services.project_consistency_check import find_orphans
+from backend.application.services.project_creation_service import (
+    ProjectCreationError,
+    create_project_atomic,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"], dependencies=[Depends(require_api_key)])
 
@@ -40,6 +45,12 @@ class ProjectCreateRequest(BaseModel):
     name: str = Field(..., min_length=1)
     start_date: str | None = None
     end_date: str | None = None
+    # [2026-07-27 신설] 원자적 생성 — `config`가 함께 오면 `ProjectConfig`(project_config_api.
+    # ProjectConfigRequest와 동일 필드셋)까지 같은 요청에서 저장한다. 생략하면 기존 계약
+    # (레지스트리 엔트리만 생성) 그대로 동작 — 하위호환 유지(CRZ, 기존 `POST /projects`
+    # 단독 호출 소비자를 깨지 않음).
+    config: dict | None = None
+    actor: str | None = None
 
 
 class ProjectStatusUpdateRequest(BaseModel):
@@ -88,15 +99,64 @@ def list_projects():
 
 @router.post("")
 def create_project(body: ProjectCreateRequest):
+    """[2026-07-26 회귀수정] 전체 파일 read-modify-write인데 락이 없어 동시 생성 시 레코드
+    유실 가능(실측 발견) — file_lock.write_lock 재사용(CRZ).
+
+    [2026-07-27 고도화] `config`가 함께 오면 registry 생성 + `ProjectConfig` 저장을
+    `project_creation_service.create_project_atomic()`으로 원자적으로 묶는다 — config 저장이
+    실패하면 방금 만든 registry 레코드를 롤백해 "설정 없는 고아 프로젝트"가 생기지 않는다.
+    `config`를 생략하면 기존 계약(레지스트리 엔트리만 생성) 그대로 동작(하위호환, CRZ)."""
     registry = get_project_registry()
-    # [2026-07-26 회귀수정] 전체 파일 read-modify-write인데 락이 없어 동시 생성 시
-    # 레코드 유실 가능(실측 발견) — file_lock.write_lock 재사용(CRZ).
     with _write_lock:
+        if body.config is None:
+            try:
+                project = registry.create(body.name, start_date=body.start_date, end_date=body.end_date)
+            except ProjectValidationError as exc:
+                return JSONResponse(status_code=422, content=error_envelope("AEGIS-VALIDATION", str(exc)))
+            return envelope(ok=True, data=_to_dict(project))
+
         try:
-            project = registry.create(body.name, start_date=body.start_date, end_date=body.end_date)
+            # project_config_api.ProjectConfigRequest를 재사용해 필드 검증(area/layer/doc_type
+            # 코드·보안레벨·인프라존 등)까지 그대로 상속한다(CRZ — 검증 로직 중복 금지). config
+            # 안에 project_name/actor가 섞여 있어도 아래 명시 인자가 우선하도록 pop 처리.
+            config_payload = dict(body.config)
+            config_payload.pop("project_name", None)
+            config_payload.pop("actor", None)
+            validated_config = project_config_api.ProjectConfigRequest(
+                project_name=body.name,
+                actor=body.actor or "guest",
+                **config_payload,
+            )
+        except ValidationError as exc:
+            return JSONResponse(status_code=422, content=error_envelope("AEGIS-VALIDATION", str(exc)))
+
+        try:
+            project, _saved_config = create_project_atomic(
+                registry,
+                project_config_api.get_project_config_store,
+                name=body.name,
+                start_date=body.start_date,
+                end_date=body.end_date,
+                config_fields=validated_config.model_dump(exclude={"actor"}),
+                actor=validated_config.actor,
+            )
         except ProjectValidationError as exc:
             return JSONResponse(status_code=422, content=error_envelope("AEGIS-VALIDATION", str(exc)))
+        except ProjectCreationError as exc:
+            return JSONResponse(status_code=422, content=error_envelope("AEGIS-VALIDATION", str(exc)))
+
     return envelope(ok=True, data=_to_dict(project))
+
+
+@router.get("/_consistency-check")
+def consistency_check():
+    """[2026-07-27 신설] 기존 데이터에서 고아(project↔config 불일치) 실측 탐지 — **자동
+    삭제·자동 수정 없음**(발견·보고만, 사용자가 직접 판단). `/{project_id}` 파라미터
+    라우트보다 먼저 등록해야 `_consistency-check`가 project_id로 오인되지 않는다(FastAPI는
+    등록 순서대로 매칭)."""
+    registry = get_project_registry()
+    result = find_orphans(registry, project_config_api.get_project_config_store)
+    return envelope(ok=True, data=result)
 
 
 @router.get("/{project_id}")
