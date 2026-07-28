@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from backend.adapters.persistence import project_scope
 from backend.server import app
+from tests._job_polling import poll_job_until_done
 
 DOC_TEXT = "# 보안 요건\n암호화 솔루션과 SSL 인증서를 적용하고 소스코드 취약성 점검을 수행한다.\n"
 
@@ -28,14 +29,21 @@ def client(tmp_path, monkeypatch):
 
 
 def test_requirements_created_in_one_project_are_invisible_in_another(client):
+    # [2026-07-28 회귀수정] `POST /documents/upload`는 2026-07-27 근본전환으로 동기 200이
+    # 아니라 202+job_id를 반환하고 실제 파이프라인은 백그라운드에서 처리된다(documents_api.py
+    # upload_document() docstring 참조) — 이 테스트는 그 전환 이전에 작성돼 갱신되지 않은
+    # 채 남아 있었다(실측 발견, 신규 계약 변경 아님 — 기존 API 계약을 뒤늦게 반영).
     upload_a = client.post(
         "/documents/upload",
         files={"file": ("a.txt", DOC_TEXT.encode("utf-8"), "text/plain")},
         data={"actor": "tester", "project_id": "proj-a"},
     )
-    assert upload_a.status_code == 200
-    assert upload_a.json()["ok"] is True
-    created_req_ids = upload_a.json()["data"]["requirements_created"]
+    assert upload_a.status_code == 202
+    job_id = upload_a.json()["data"]["job_id"]
+    job_body = poll_job_until_done(client, job_id)
+    assert job_body["ok"] is True
+    assert job_body["data"]["status"] == "done"
+    created_req_ids = job_body["data"]["result"]["requirements_created"]
     assert created_req_ids  # 최소 1건은 채번되어야 이 테스트가 의미 있음
 
     list_a = client.get("/requirements", params={"project_id": "proj-a"}).json()

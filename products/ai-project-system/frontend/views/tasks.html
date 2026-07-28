@@ -45,6 +45,11 @@
   .transition-btn.to-DONE:hover { border-color: var(--ok); color: var(--ok-text); }
   .transition-btn.to-READY:hover, .transition-btn.to-IN_PROGRESS:hover { border-color: var(--color-brand-primary); color: var(--brand-text); }
   .no-transition { color: var(--text-muted); font-size: 12px; font-style: italic; }
+
+  /* [2026-07-28] requirements.html과 동일 단일컬럼 레이아웃 — .actor-bar-pill 기본값
+     (margin-left:auto)은 topbar flex-row 화면(documents/preview)용이라, 여기서도
+     requirements.html과 동일하게 로컬 오버라이드한다(CRZ, 신규 규칙 없음). */
+  .actor-bar-pill { display: inline-flex; margin: 0 0 16px; }
 </style>
 </head>
 <body>
@@ -63,8 +68,13 @@
 
   <div class="summary-row" id="summary-row"></div>
 
-  <div class="actor-bar">
-    행위자(actor):
+  <!-- [2026-07-28 UI/UX 일관성 보정] documents.html/requirements.html/preview.html이 이미
+       2026-07-26에 .actor-bar-pill(components.css 공용)로 전환했으나 이 화면만 구 .actor-bar
+       한 줄 텍스트로 남아있었다(실측 grep — 화면 간 시각 불일치). 새 클래스 없이 기존 공용
+       pill로 맞춘다(CRZ). -->
+  <div class="actor-bar-pill">
+    <span class="actor-bar-icon">👤</span>
+    <span class="actor-bar-label">행위자(actor)</span>
     <input type="text" id="actor-input" placeholder="예: hong.gildong" />
   </div>
 
