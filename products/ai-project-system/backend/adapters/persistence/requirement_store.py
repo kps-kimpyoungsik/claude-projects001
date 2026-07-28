@@ -18,11 +18,22 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from backend.adapters.persistence.file_lock import write_lock as _write_lock
 from backend.application.ports.requirement_store_port import RequirementStorePort
 from backend.domain.requirements.classifier import ClassificationResult
 from backend.domain.requirements.codes import DESIGN_GATE_VALUES
 from backend.domain.requirements.id_format import build_req_id
 from backend.domain.requirements.pii_detector import scan_for_pii
+
+# [2026-07-28 신규, ai-project-system 2번 작업] 이 스토어의 모든 쓰기 경로(채번·상태전이·
+# 게이트 갱신·재청킹 큐 append)는 반드시 `file_lock.write_lock`(RLock)으로 감싼다 — 지금까지
+# API 레이어(`requirements_api.py`)만 이 락으로 호출부를 감쌌고 스토어 자체는 무방비였다
+# (실측 확인, `job_registry.py`/`file_lock.py` docstring에 이미 기록된 기존 갭). 백그라운드
+# 잡 워커(`document_upload_service.py` 경유)처럼 이 락으로 감싸지 않는 새 호출 경로가 생겨도
+# 이 파일 내부에서 항상 보호되도록, 락을 "호출부의 관례"가 아니라 스토어 메서드 자체에
+# 내장한다(신규 락 프리미티브 발명 없음 — 기존 `write_lock`을 그대로 재사용, CRZ). RLock이라
+# API 레이어가 이미 `with write_lock:` 안에서 호출해도 중첩 획득이 안전하다(file_lock.py
+# 2026-07-28 docstring 참고).
 
 # plans/_plan/01_PHASE1_DATA_MODEL.md §2-3 — 9개 라이프사이클 상태(기존 4값 status 대체).
 LIFECYCLE_STATUSES = {
@@ -175,45 +186,51 @@ class RequirementStore(RequirementStorePort):
         if not classification.doc_type_code or not classification.area_code:
             return None
 
-        data = self._load_all()
-        seq = self._next_seq(data, classification.doc_type_code, classification.area_code)
-        req_id = build_req_id(classification.doc_type_code, classification.area_code, seq, extra_doc_types=extra_doc_types)
+        # [2026-07-28] 락 없이는 두 스레드가 같은 (doc_type_code, area_code) 조합에 대해
+        # `_next_seq()`로 동일한 seq를 계산해 서로 다른 두 요구사항이 같은 req_id로 충돌하거나,
+        # 늦게 `_save_all()`한 스레드가 먼저 저장된 스레드의 레코드를 통째로 덮어써 유실시킬 수
+        # 있다(read-modify-write 경합, S10/DES-080과 동일 계열). 채번(seq 계산)부터 저장까지
+        # 전체를 하나의 임계구역으로 묶어야 한다.
+        with _write_lock:
+            data = self._load_all()
+            seq = self._next_seq(data, classification.doc_type_code, classification.area_code)
+            req_id = build_req_id(classification.doc_type_code, classification.area_code, seq, extra_doc_types=extra_doc_types)
 
-        pii_result = scan_for_pii(description)
+            pii_result = scan_for_pii(description)
 
-        record = RequirementRecord(
-            req_id=req_id,
-            doc_type_code=classification.doc_type_code,
-            area_code=classification.area_code,
-            description=description.strip()[:200],
-            source_ref=source_ref,
-            doc_type_confidence=classification.doc_type_confidence,
-            area_confidence=classification.area_confidence,
-            layer_code=classification.layer_code,
-            layer_confidence=classification.layer_confidence,
-            requirement_type=classification.requirement_type,
-            requirement_type_confidence=classification.requirement_type_confidence,
-            design_draft_gate=classification.design_draft_gate,
-            design_draft_gate_confidence=classification.design_draft_gate_confidence,
-            matched_keywords=classification.matched_keywords,
-            lifecycle_status="UNDER_REVIEW" if classification.needs_review else "CLASSIFIED",
-            created_at=datetime.now(timezone.utc).isoformat(),
-            doc_id=doc_id,
-            heading_path=heading_path or [],
-            char_start=char_start,
-            char_end=char_end,
-            source_is_image=source_is_image,
-            image_analysis_status="not_implemented" if source_is_image else "not_applicable",
-            contains_pii=pii_result.contains_pii,
-            pii_scan_matched=pii_result.pii_scan_matched,
-            related_chunks=related_chunks or [],
-            doc_filename=f"{doc_id}.md" if doc_id else None,
-            page_number=page_number,
-            bbox=bbox,
-        )
-        data[req_id] = asdict(record)
-        self._save_all(data)
-        return record
+            record = RequirementRecord(
+                req_id=req_id,
+                doc_type_code=classification.doc_type_code,
+                area_code=classification.area_code,
+                description=description.strip()[:200],
+                source_ref=source_ref,
+                doc_type_confidence=classification.doc_type_confidence,
+                area_confidence=classification.area_confidence,
+                layer_code=classification.layer_code,
+                layer_confidence=classification.layer_confidence,
+                requirement_type=classification.requirement_type,
+                requirement_type_confidence=classification.requirement_type_confidence,
+                design_draft_gate=classification.design_draft_gate,
+                design_draft_gate_confidence=classification.design_draft_gate_confidence,
+                matched_keywords=classification.matched_keywords,
+                lifecycle_status="UNDER_REVIEW" if classification.needs_review else "CLASSIFIED",
+                created_at=datetime.now(timezone.utc).isoformat(),
+                doc_id=doc_id,
+                heading_path=heading_path or [],
+                char_start=char_start,
+                char_end=char_end,
+                source_is_image=source_is_image,
+                image_analysis_status="not_implemented" if source_is_image else "not_applicable",
+                contains_pii=pii_result.contains_pii,
+                pii_scan_matched=pii_result.pii_scan_matched,
+                related_chunks=related_chunks or [],
+                doc_filename=f"{doc_id}.md" if doc_id else None,
+                page_number=page_number,
+                bbox=bbox,
+            )
+            data[req_id] = asdict(record)
+            self._save_all(data)
+            return record
 
     def set_status(self, req_id: str, status: str, actor: str, reason: str | None = None) -> RequirementRecord:
         """사람이 확인한 결과를 반영한다 — ACCEPTED/REJECTED/WITHDRAWN은 여기서만 발생(자동 승격 없음).
@@ -225,22 +242,23 @@ class RequirementStore(RequirementStorePort):
             raise ValueError(f"미등록 lifecycle_status: {status} (허용: {sorted(LIFECYCLE_STATUSES)})")
         if status in REASON_REQUIRED_STATUSES and not reason:
             raise ValueError(f"{status} 전이는 reason이 필수다(추정 사유로 채우지 않음)")
-        data = self._load_all()
-        if req_id not in data:
-            raise KeyError(f"존재하지 않는 req_id: {req_id}")
+        with _write_lock:
+            data = self._load_all()
+            if req_id not in data:
+                raise KeyError(f"존재하지 않는 req_id: {req_id}")
 
-        record = data[req_id]
-        event = StatusChangeEvent(
-            from_status=record["lifecycle_status"],
-            to_status=status,
-            actor=actor,
-            reason=reason,
-            ts=datetime.now(timezone.utc).isoformat(),
-        )
-        record.setdefault("status_history", []).append(asdict(event))
-        record["lifecycle_status"] = status
-        self._save_all(data)
-        return RequirementRecord(**record)
+            record = data[req_id]
+            event = StatusChangeEvent(
+                from_status=record["lifecycle_status"],
+                to_status=status,
+                actor=actor,
+                reason=reason,
+                ts=datetime.now(timezone.utc).isoformat(),
+            )
+            record.setdefault("status_history", []).append(asdict(event))
+            record["lifecycle_status"] = status
+            self._save_all(data)
+            return RequirementRecord(**record)
 
     def set_design_draft_gate(
         self, req_id: str, value: str, actor: str, reason: str | None = None,
@@ -254,46 +272,48 @@ class RequirementStore(RequirementStorePort):
         """
         if value not in DESIGN_GATE_VALUES:
             raise ValueError(f"미등록 design_draft_gate: {value} (허용: {sorted(DESIGN_GATE_VALUES)})")
-        data = self._load_all()
-        if req_id not in data:
-            raise KeyError(f"존재하지 않는 req_id: {req_id}")
+        with _write_lock:
+            data = self._load_all()
+            if req_id not in data:
+                raise KeyError(f"존재하지 않는 req_id: {req_id}")
 
-        record = data[req_id]
-        event = StatusChangeEvent(
-            from_status=record.get("design_draft_gate") or "",
-            to_status=value,
-            actor=actor,
-            reason=reason,
-            ts=datetime.now(timezone.utc).isoformat(),
-        )
-        record.setdefault("design_draft_gate_history", []).append(asdict(event))
-        record["design_draft_gate"] = value
-        record["design_draft_gate_confidence"] = 1.0
-        self._save_all(data)
-        return RequirementRecord(**record)
+            record = data[req_id]
+            event = StatusChangeEvent(
+                from_status=record.get("design_draft_gate") or "",
+                to_status=value,
+                actor=actor,
+                reason=reason,
+                ts=datetime.now(timezone.utc).isoformat(),
+            )
+            record.setdefault("design_draft_gate_history", []).append(asdict(event))
+            record["design_draft_gate"] = value
+            record["design_draft_gate_confidence"] = 1.0
+            self._save_all(data)
+            return RequirementRecord(**record)
 
     def set_design_draft_gate_override(
         self, req_id: str, value: bool, actor: str, reason: str | None = None,
     ) -> RequirementRecord:
         """§5-2 — `design_draft_gate_override` 수기 지정. `design_draft_gate_history`를
         그대로 공유한다(신규 이력 배열 발명 없음, §5-2 명시)."""
-        data = self._load_all()
-        if req_id not in data:
-            raise KeyError(f"존재하지 않는 req_id: {req_id}")
+        with _write_lock:
+            data = self._load_all()
+            if req_id not in data:
+                raise KeyError(f"존재하지 않는 req_id: {req_id}")
 
-        record = data[req_id]
-        event = {
-            "field": "design_draft_gate_override",
-            "from": record.get("design_draft_gate_override", False),
-            "to": value,
-            "actor": actor,
-            "reason": reason,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }
-        record.setdefault("design_draft_gate_history", []).append(event)
-        record["design_draft_gate_override"] = value
-        self._save_all(data)
-        return RequirementRecord(**record)
+            record = data[req_id]
+            event = {
+                "field": "design_draft_gate_override",
+                "from": record.get("design_draft_gate_override", False),
+                "to": value,
+                "actor": actor,
+                "reason": reason,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+            record.setdefault("design_draft_gate_history", []).append(event)
+            record["design_draft_gate_override"] = value
+            self._save_all(data)
+            return RequirementRecord(**record)
 
     def request_rechunk(
         self, req_id: str, actor: str, reason: str,
@@ -306,21 +326,26 @@ class RequirementStore(RequirementStorePort):
         실제 재청킹 실행(ingestion/chunking.py 재실행)은 이 함수의 책임 범위 밖 — 큐에
         남기기만 한다(자동 재청킹은 오탐 시 무한반복 위험, T98 AIP).
         """
-        record = self.set_status(req_id, "REJECTED", actor=actor, reason=f"[RECHUNK] {reason}")
+        # set_status()가 내부적으로 _write_lock을 다시 획득한다 — RLock이라 중첩 획득 안전
+        # (file_lock.py 2026-07-28 docstring 참고). jsonl append도 같은 락으로 감싸 여러
+        # 스레드의 append가 서로 줄 단위로 안전하게 직렬화되게 한다(교차 쓰기로 인한 줄 깨짐
+        # 방지).
+        with _write_lock:
+            record = self.set_status(req_id, "REJECTED", actor=actor, reason=f"[RECHUNK] {reason}")
 
-        self._rechunk_queue_path.parent.mkdir(parents=True, exist_ok=True)
-        entry = {
-            "req_id": req_id,
-            "doc_id": record.doc_id,
-            "actor": actor,
-            "reason": reason,
-            "suggested_char_start": suggested_char_start,
-            "suggested_char_end": suggested_char_end,
-            "requested_at": datetime.now(timezone.utc).isoformat(),
-        }
-        with open(self._rechunk_queue_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        return record
+            self._rechunk_queue_path.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "req_id": req_id,
+                "doc_id": record.doc_id,
+                "actor": actor,
+                "reason": reason,
+                "suggested_char_start": suggested_char_start,
+                "suggested_char_end": suggested_char_end,
+                "requested_at": datetime.now(timezone.utc).isoformat(),
+            }
+            with open(self._rechunk_queue_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            return record
 
     def set_work_status(
         self, req_id: str, work_status: str, assigned_agent_command: str | None = None,
@@ -333,16 +358,17 @@ class RequirementStore(RequirementStorePort):
         """
         if work_status not in WORK_STATUSES:
             raise ValueError(f"미등록 work_status: {work_status} (허용: {sorted(WORK_STATUSES)})")
-        data = self._load_all()
-        if req_id not in data:
-            raise KeyError(f"존재하지 않는 req_id: {req_id}")
+        with _write_lock:
+            data = self._load_all()
+            if req_id not in data:
+                raise KeyError(f"존재하지 않는 req_id: {req_id}")
 
-        record = data[req_id]
-        record["work_status"] = work_status
-        record["assigned_agent_command"] = assigned_agent_command
-        record["work_status_updated_at"] = datetime.now(timezone.utc).isoformat()
-        self._save_all(data)
-        return RequirementRecord(**record)
+            record = data[req_id]
+            record["work_status"] = work_status
+            record["assigned_agent_command"] = assigned_agent_command
+            record["work_status_updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._save_all(data)
+            return RequirementRecord(**record)
 
     def list_all(self) -> list[RequirementRecord]:
         data = self._load_all()

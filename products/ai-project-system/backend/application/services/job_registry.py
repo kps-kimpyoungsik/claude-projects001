@@ -8,36 +8,48 @@ FastAPI 요청 코루틴 안에서 동기·블로킹으로 실행해, 단일 uvi
 하나만으로 "즉시 202 + job_id 반환, 실제 파이프라인은 백그라운드 스레드에서 진행" 패턴을
 구현한다.
 
-**동시성 설계(핵심 결정, 왜 max_workers=1인가)**: `RequirementStore`/`DocumentStore`는 자체
-내부 락이 없다(실측 확인 — `backend/adapters/persistence/file_lock.py`의 `write_lock`은
-`documents_api.py`가 그래프 동기화 구간에만 선택적으로 감싸 쓰는 것이지, 스토어 자체의
-read-modify-write를 항상 보호하지 않는다). 지금까지는 요청 자체가 이벤트 루프를 완전히
-블로킹했기 때문에 사실상 "한 번에 문서 1건만 처리"가 우연히 보장돼 있었다 — 이 잡 큐를
-멀티스레드로 만들면 그 암묵적 직렬성이 깨지고, 두 문서가 동시에 처리될 때
-`requirements_store.json`에 대한 두 개의 겹치는 read-modify-write가 서로를 덮어쓰는 새로운
-경합 버그가 생긴다(SPECIALIST.md S10 error_kb DES-080과 동일 계열 위험 — 이번 세션 범위가
-아닌 스토어 자체의 락 보강까지 손대지 않기 위해, 실행기 크기를 1로 고정해 기존 안전성을
-그대로 보존한다). LibreOffice headless 변환도 기본 사용자 프로파일을 공유해 동시 실행 시
-프로파일 락 충돌 위험이 있다(실측 미확인 — 방어적으로 동일하게 max_workers=1로 회피).
+**동시성 설계(2026-07-28 갱신, ai-project-system 2번 작업 — max_workers 1→3)**: 이전에는
+`RequirementStore`/`DocumentStore` 자체에 내부 락이 없어(당시 실측 확인) 요청 자체가
+이벤트 루프를 완전히 블로킹하던 구시대 동작이 "한 번에 문서 1건만 처리"를 우연히
+보장하고 있었다. 이제는 그 우연에 기대지 않는다 — `backend/adapters/persistence/
+file_lock.py`의 `write_lock`(RLock)을 `RequirementStore`의 모든 쓰기 메서드
+(`add_from_classification`·`set_status`·`set_design_draft_gate`·
+`set_design_draft_gate_override`·`set_work_status`·`request_rechunk`)와
+`DocumentStore.save()` 자체에 **내장**해, 어떤 호출부(API 레이어든 백그라운드 잡
+워커든)를 거치든 항상 같은 락으로 직렬화되게 만들었다(스토어가 스스로를 보호 — 호출부가
+매번 락으로 감싸는 것을 잊어도 안전, `file_lock.py`·`requirement_store.py` 2026-07-28
+docstring 참고). 이 락 보강을 스레드 동시 write 재현 테스트로 실증한 뒤
+(`tests/test_requirement_store.py::test_concurrent_add_from_classification_no_data_loss`·
+`test_concurrent_set_status_no_lost_update` — 락을 임시로 무력화하면 실제로
+JSONDecodeError/유실이 재현되고, 락이 있으면 통과함을 확인) worker 수를 **1 → 3**으로
+늘린다. 3을 고른 근거: ①과도하게 늘리지 말라는 지시(값을 급격히 키우지 않음) ②LibreOffice
+headless 변환이 기본 사용자 프로파일을 공유해 동시 실행 시 프로파일 락 충돌 위험이 여전히
+남아 있다는 기존 경고(실측 미확인 채로 유지 — 이번 범위는 스토어 락 보강까지이지
+LibreOffice 프로파일 격리는 아님)를 고려해 극단적으로 크게 잡지 않았다. 그러나 1은 여전히
+"poison-pill" 위험(개별 잡 타임아웃으로 완화는 됐지만 워커 자체가 하나뿐인 근본 병목은
+그대로)을 안고 있어 2~4 구간 중간값으로 최소한의 병렬성 개선을 준다.
 
-향후 처리량이 실제로 문제가 되면(§AVC 근거 기반 판단) 스토어에 자체 락을 추가한 뒤에만
-worker 수를 늘리는 것이 옳은 순서다 — 이 문서에 그 후속 과제를 명시해 둔다(T108 NSP-9,
-미해결 항목 표면화).
+LibreOffice 프로파일 동시성 충돌 자체는 여전히 실측 미확인 — 운영 중 그 증상(동시 DOCX/
+PPTX 업로드 실패)이 관측되면 LibreOffice 프로파일 격리(예: 요청별
+`-env:UserInstallation` 임시 프로파일)를 별도 후속 과제로 처리해야 한다(T108 NSP-9,
+미해결 항목 표면화 — 이번 범위 밖).
 
 [2026-07-28 개별 잡 타임아웃 추가, directive D-82ebea85 — aegis-dev000 Experience Buffer
-2026-07-28 항목("poison-pill" 위험) 해소] `max_workers=1`은 스토어 read-modify-write 경합을
-막기 위한 의도적 설계였지만, 개별 잡에 타임아웃·취소가 전혀 없어 잡 1건이 예상보다 오래
-걸리면(모델 최초 로딩 지연·네트워크 문제 등) 그 뒤에 제출된 모든 잡(가벼운 것 포함)이 유일한
-워커 뒤에서 **무기한** 대기하는 갭이 있었다(실측 확인 — 전체 pytest 스위트 재실행에서
-`test_documents_upload_api.py`의 wav 전사 테스트가 오래 걸리자 그 뒤에 대기하던 5개 테스트가
-연쇄로 타임아웃/실패). Python 스레드는 강제 종료가 불가능하므로(Experience Buffer
-2026-07-26 항목과 동일 제약) 여기서 "타임아웃 처리"는 실행 중인 스레드를 죽이는 게 아니라,
-`JOB_TIMEOUT_SECONDS` 경과 시 그 잡의 상태를 즉시 `failed`(timeout)로 표시해 폴링 API가
-무기한 대기 대신 유한 시간 안에 실패를 관측하게 만드는 것이다(§실측: 백그라운드 스레드
-자체는 계속 돌 수 있고, `_JOBS`에 남아 있는 아직 시작조차 못한 "queued" 잡도 자신의 제출
-시점 기준 타이머로 개별적으로 타임아웃되므로, 워커가 막혀도 뒤에 밀린 잡들이 각자 유한
-시간 안에 "실패"로 보고된다). 워커 자체가 여전히 막혀 있는 근본 문제(다중 워커·잡
-취소·스토어 락 보강)는 이번 범위 밖 — 후속 과제로 명시해 둔다(T108 NSP-9).
+2026-07-28 항목("poison-pill" 위험) 해소] `max_workers=1`(당시 값)은 스토어
+read-modify-write 경합을 막기 위한 의도적 설계였지만, 개별 잡에 타임아웃·취소가 전혀 없어
+잡 1건이 예상보다 오래 걸리면(모델 최초 로딩 지연·네트워크 문제 등) 그 뒤에 제출된 모든
+잡(가벼운 것 포함)이 유일한 워커 뒤에서 **무기한** 대기하는 갭이 있었다(실측 확인 — 전체
+pytest 스위트 재실행에서 `test_documents_upload_api.py`의 wav 전사 테스트가 오래 걸리자
+그 뒤에 대기하던 5개 테스트가 연쇄로 타임아웃/실패). Python 스레드는 강제 종료가
+불가능하므로(Experience Buffer 2026-07-26 항목과 동일 제약) 여기서 "타임아웃 처리"는
+실행 중인 스레드를 죽이는 게 아니라, `JOB_TIMEOUT_SECONDS` 경과 시 그 잡의 상태를 즉시
+`failed`(timeout)로 표시해 폴링 API가 무기한 대기 대신 유한 시간 안에 실패를 관측하게
+만드는 것이다(§실측: 백그라운드 스레드 자체는 계속 돌 수 있고, `_JOBS`에 남아 있는 아직
+시작조차 못한 "queued" 잡도 자신의 제출 시점 기준 타이머로 개별적으로 타임아웃되므로,
+워커가 막혀도 뒤에 밀린 잡들이 각자 유한 시간 안에 "실패"로 보고된다). 워커 자체가 하나만
+있어 뒤에 밀린 잡들이 지연되는 근본 문제는 위 2026-07-28 스토어 락 보강 + worker 수
+1→3 확대로 완화됐다(완전 제거는 아님 — 3개 잡이 동시에 오래 걸리는 잡으로 막히면 4번째
+잡부터는 여전히 대기).
 """
 
 from __future__ import annotations
@@ -55,10 +67,13 @@ logger = logging.getLogger(__name__)
 
 JobStatus = Literal["queued", "processing", "done", "failed"]
 
-# 문서 파이프라인 전용 단일 워커 실행기 — upload/rechunk 두 엔드포인트가 이 하나를 공유해
-# "한 번에 문서 1건만 실제로 처리"라는 기존(우연한) 직렬성 불변식을 유지한다(위 docstring
-# 참고). 신규 프로세스·신규 서비스 등록 없음 — 현재 uvicorn 프로세스 안의 스레드 1개.
-_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="doc-pipeline")
+# 문서 파이프라인 전용 워커 실행기 — upload/rechunk 두 엔드포인트가 이 하나를 공유한다.
+# [2026-07-28] 1 → 3으로 확대 — `RequirementStore`/`DocumentStore`가 이제 스스로 write
+# 경로를 `file_lock.write_lock`(RLock)으로 보호하므로(위 docstring 2026-07-28 항목,
+# `requirement_store.py`/`document_store.py` 참고) 더 이상 "워커 1개"라는 우연한 직렬성에
+# 기대어 스토어 무결성을 지킬 필요가 없다. 신규 프로세스·신규 서비스 등록 없음 — 현재
+# uvicorn 프로세스 안의 스레드 3개.
+_EXECUTOR = ThreadPoolExecutor(max_workers=3, thread_name_prefix="doc-pipeline")
 
 # [2026-07-28 신규] 개별 잡 타임아웃(초, 설정 가능 — env override 지원).
 #

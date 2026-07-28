@@ -10,6 +10,8 @@
 import re
 from pathlib import Path
 
+from backend.adapters.persistence.file_lock import write_lock as _write_lock
+
 # [2026-07-24 보안수정] doc_id가 API 경로 파라미터로 그대로 유입되어 검증 없이
 # `f"{doc_id}.md"` 경로 조합에 쓰이면 경로 순회(CWE-22)가 가능해진다(5-agent 진단
 # 실측 확인). save/load/export_for_preview 3개 진입점 전부가 doc_id를 받으므로 여기서
@@ -40,13 +42,20 @@ class DocumentStore:
         파일 내용이 항상 일치하게 만든다.
         """
         _validate_doc_id(doc_id)
-        self._dir.mkdir(parents=True, exist_ok=True)
-        path = self._dir / f"{doc_id}.md"
-        # Path.write_text()는 이 프로젝트가 지원하는 Python 버전에서 newline 인자를 받지
-        # 않아(3.13 이전) open()을 직접 써서 newline="" 을 강제한다.
-        with open(path, "w", encoding="utf-8", newline="") as f:
-            f.write(markdown_content)
-        return path
+        # [2026-07-28, ai-project-system 2번 작업] doc_id는 업로드 시점에 uuid로 채번돼
+        # 정상 경로에서는 서로 다른 스레드가 같은 doc_id로 동시에 save()를 부르지 않는다 —
+        # 하지만 이 스토어를 쓰는 다른 API(project_scope 공유 디렉터리)나 미래 호출부가
+        # 그 가정을 깰 가능성까지 방어하기 위해 `RequirementStore`와 동일한 공유
+        # `file_lock.write_lock`(RLock)으로 디렉터리 생성 + 파일쓰기 구간을 감싼다(신규 락
+        # 프리미티브 발명 없음, CRZ).
+        with _write_lock:
+            self._dir.mkdir(parents=True, exist_ok=True)
+            path = self._dir / f"{doc_id}.md"
+            # Path.write_text()는 이 프로젝트가 지원하는 Python 버전에서 newline 인자를 받지
+            # 않아(3.13 이전) open()을 직접 써서 newline="" 을 강제한다.
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(markdown_content)
+            return path
 
     def load(self, doc_id: str) -> str | None:
         _validate_doc_id(doc_id)

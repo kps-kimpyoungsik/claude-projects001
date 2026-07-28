@@ -1,5 +1,9 @@
 """요구사항 저장소 — REQ 채번·라이프사이클 상태전이·감사로그 회귀 테스트."""
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from backend.domain.requirements.classifier import classify_chunk
@@ -176,6 +180,69 @@ def test_set_work_status_rejects_unknown_value(store):
 def test_set_work_status_unknown_req_id_raises(store):
     with pytest.raises(KeyError):
         store.set_work_status("REQ-QA-SEC-999", "DONE")
+
+
+def test_concurrent_add_from_classification_no_data_loss(store, monkeypatch):
+    """[2026-07-28, ai-project-system 2번 작업] 여러 스레드가 동시에 같은 스토어에
+    write할 때 read-modify-write 경합으로 레코드가 유실되거나 req_id가 충돌하지 않는지
+    실제로 재현·검증한다(T53 VIP ground-truth — "락을 걸었다"는 코드 존재가 아니라 이
+    테스트 통과가 증거여야 한다).
+
+    `_load_all()` 직후 인위적인 지연을 넣어 경합 창(race window)을 넓힌다 — 그렇지
+    않으면 실제 파일 I/O가 너무 빨라 스레드가 우연히 겹치지 않고 통과하는 거짓 PASS가
+    나올 수 있다. 이 지연은 락을 획득한 채로 실행되므로(add_from_classification이 락
+    안에서 `_load_all()`을 호출), 락이 정상 동작하면 다른 스레드는 그 지연 동안 대기만
+    하고 데이터 경합은 발생하지 않는다.
+    """
+    original_load = store._load_all
+
+    def delayed_load(*a, **kw):
+        data = original_load(*a, **kw)
+        time.sleep(0.01)
+        return data
+
+    monkeypatch.setattr(store, "_load_all", delayed_load)
+
+    classification = classify_chunk(SECURITY_TEXT)
+    total = 30
+
+    def _add(i):
+        return store.add_from_classification(
+            classification, description=f"item-{i}", source_ref=f"doc::child:{i}",
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(_add, range(total)))
+
+    assert all(r is not None for r in results)
+    req_ids = [r.req_id for r in results]
+    assert len(req_ids) == len(set(req_ids)), f"req_id 충돌 발생(락 미보호 시 재현되는 증상): {req_ids}"
+
+    stored = store.list_all()
+    assert len(stored) == total, f"레코드 유실 — 기대 {total}건, 실제 {len(stored)}건(락 미보호 시 재현되는 증상)"
+
+
+def test_concurrent_set_status_no_lost_update(store):
+    """[2026-07-28] 서로 다른 req_id에 대한 동시 set_status() 호출이 서로의 상태변경을
+    덮어쓰지 않는지 검증한다(각 스레드가 자신의 status_history 항목을 정확히 남겨야 함)."""
+    classification = classify_chunk(SECURITY_TEXT)
+    records = [
+        store.add_from_classification(classification, description=f"item-{i}", source_ref=f"doc::child:{i}")
+        for i in range(10)
+    ]
+
+    def _withdraw(record):
+        return store.set_status(record.req_id, "WITHDRAWN", actor="pm", reason=f"withdraw-{record.req_id}")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(_withdraw, records))
+
+    stored = {r.req_id: r for r in store.list_all()}
+    for record in records:
+        updated = stored[record.req_id]
+        assert updated.lifecycle_status == "WITHDRAWN"
+        assert len(updated.status_history) == 1
+        assert updated.status_history[0]["reason"] == f"withdraw-{record.req_id}"
 
 
 def test_set_design_draft_gate_override_appends_shared_history(store):
