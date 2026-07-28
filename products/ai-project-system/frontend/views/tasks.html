@@ -281,6 +281,13 @@ async function init() {
 
   renderSummary(ALL_TASKS);
   populateFilterOptions(ALL_TASKS);
+
+  // [2026-07-28 신규] requirements.html의 "Task 생성" 직후 이 화면으로 넘어올 때
+  // ?q=<task_id>로 방금 만든 Task를 바로 찾아 보여준다(실측 발견 — 이전에는 Task 생성
+  // 후 이 화면으로 오는 연결이 아예 없어 사용자가 LNB로 직접 찾아야 했던 작업흐름 단절).
+  const qParam = new URLSearchParams(window.location.search).get("q");
+  if (qParam) document.getElementById("search").value = qParam;
+
   applyFiltersAndRender();
 
   const actorInput = document.getElementById("actor-input");
