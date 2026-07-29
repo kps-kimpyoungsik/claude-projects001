@@ -1,7 +1,14 @@
 """[Phase 3.1] Graphify 도메인 모델 — Node/Edge 구조체 정의.
 
-설계 명세 그대로: Node 종류 4개(DocumentChunk/Function/Variable/Requirement/Policy),
+설계 명세 원안: Node 종류 4개(DocumentChunk/Function/Variable/Requirement/Policy),
 Edge 종류 4개(IMPLEMENTS/CONTRADICTS/CALLS/REFINES).
+
+[2026-07-29 배선, directive D-eebcef47] `NodeKind.TASK` 추가 — `requirement.py.
+make_implements_edge(task_id, req_id)`가 이미 존재했으나 그래프에 TASK 종류 노드가
+없어 엣지의 source_id(task_id)가 가리키는 노드가 그래프에 없는 고아 엣지(T92 GDI
+위반)를 만들 수 있었다. 사용자 결정(방향 ①): Task 생성 시점에 Task 노드도 함께
+merge해 완전한 그래프 표현을 만든다 — `backend.domain.entities.task.make_task_node()`
+참조.
 """
 
 from dataclasses import dataclass, field
@@ -14,6 +21,8 @@ class NodeKind(str, Enum):
     VARIABLE = "Variable"
     REQUIREMENT = "Requirement"
     POLICY = "Policy"
+    TASK = "Task"  # [directive D-eebcef47] make_implements_edge(task_id, req_id)의 task_id
+    # 쪽이 그래프에 실재해야 고아 엣지(T92 GDI)가 생기지 않는다.
 
 
 class EdgeKind(str, Enum):

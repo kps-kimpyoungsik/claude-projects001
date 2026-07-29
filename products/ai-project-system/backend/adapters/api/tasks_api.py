@@ -21,7 +21,9 @@ from backend.adapters.persistence.file_lock import graph_path as _graph_path
 from backend.adapters.persistence.file_lock import write_lock as _write_lock
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.adapters.persistence.task_store import TaskStore
-from backend.domain.entities.task import InvalidDomainCodeError, Task
+from backend.application.services.graph_pipeline_service import merge_into_graph
+from backend.domain.entities.requirement import make_implements_edge
+from backend.domain.entities.task import InvalidDomainCodeError, Task, make_task_node
 from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(require_api_key)])
@@ -107,6 +109,17 @@ def create_task(body: TaskCreateRequest, project_id: str = Query(DEFAULT_PROJECT
         except InvalidDomainCodeError as exc:
             return JSONResponse(status_code=422, content=error_envelope("AEGIS-VALIDATION", str(exc)))
         created = store.create_or_update(task, graph=_load_graph(project_id))
+
+        # [2026-07-29 배선, directive D-eebcef47] Task 노드 + IMPLEMENTS 엣지를 그래프에
+        # merge한다. 노드와 엣지를 **같은 merge_into_graph() 호출**에 함께 넘겨야 한다 —
+        # merge_into_graph()는 호출 안에서 항상 노드 먼저, 엣지 나중 순서로 처리하므로
+        # (graph_pipeline_service.py 참조), 엣지가 병합되는 시점에 대응 Task 노드가 이미
+        # 그래프에 존재함이 보장된다(고아 엣지 방지, T92 GDI). `_write_lock` 안에서 실행해
+        # requirements_api.sync_requirement_to_graph()와 동일 락으로 graph.json 동시쓰기를
+        # 보호한다(회귀 없음, 기존 락 재사용 — CRZ).
+        task_node = make_task_node(created)
+        implements_edges = [make_implements_edge(created.task_id, req_id) for req_id in created.source_req_ids]
+        merge_into_graph(_graph_path(project_id), nodes=[task_node], edges=implements_edges)
 
     return envelope(ok=True, data=asdict(created))
 

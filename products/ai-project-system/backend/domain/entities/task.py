@@ -9,6 +9,7 @@
 
 from dataclasses import dataclass, field
 
+from backend.domain.graph.entities import Node, NodeKind
 from backend.domain.requirements.codes import DOMAIN_CODES
 
 
@@ -41,3 +42,18 @@ class Task:
             raise InvalidDomainCodeError(
                 f"미등록 도메인 코드: {self.domain_code} (허용: {sorted(DOMAIN_CODES)})"
             )
+
+
+def make_task_node(task: Task) -> Node:
+    """[2026-07-29 배선, directive D-eebcef47] Task를 그래프의 Task 노드로 만든다.
+
+    `backend.domain.entities.requirement.make_requirement_node()`와 대칭되는 패턴(도메인
+    계층, I/O 없는 순수 변환) — Task는 문서 청킹 산출물이 아니라 API 호출로 사람/시스템이
+    직접 생성하는 레코드라 source_ref는 문서 출처가 아니라 task_id 자체를 쓴다(스스로가
+    근거 — task_id는 TaskStore.generate_task_id()가 채번해 이미 실재가 보장된 값이다).
+
+    `requirement.make_implements_edge(task_id, req_id)`가 가리키는 task_id 쪽 노드가
+    그래프에 실재하려면, 이 함수로 만든 노드를 그 엣지와 **같은 merge_into_graph() 호출**에
+    함께 넘겨야 한다(고아 엣지 방지, T92 GDI) — `tasks_api.create_task()` 참조.
+    """
+    return Node(node_id=task.task_id, kind=NodeKind.TASK, label=task.title, source_ref=task.task_id)

@@ -1,13 +1,17 @@
 """Task 상태 조회·전이 API — FastAPI TestClient로 인메모리 검증 (test_requirements_api.py와
 동일 monkeypatch 격리 패턴, CRZ)."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.adapters.api import tasks_api
 from backend.adapters.persistence import project_scope
+from backend.adapters.persistence.file_lock import graph_path
 from backend.adapters.persistence.task_store import TaskStore
 from backend.domain.entities.task import Task
+from backend.domain.graph.entities import NodeKind
 from backend.server import app
 
 
@@ -150,3 +154,59 @@ def test_status_change_malformed_body_returns_422(client):
     _seed(store)
     res = http.post("/tasks/T-1/status", json={"status": "READY"})
     assert res.status_code == 422
+
+
+def _read_graph(project_id: str = "default") -> dict:
+    return json.loads(graph_path(project_id).read_text(encoding="utf-8"))
+
+
+def test_create_task_merges_task_node_and_implements_edge_into_graph(client):
+    """[2026-07-29 배선, directive D-eebcef47] Task 생성 시 그래프에 TASK 노드 +
+    IMPLEMENTS 엣지가 함께 merge되어야 한다 — 엣지만 생기고 노드가 없는 고아 엣지
+    (T92 GDI 위반)가 생기지 않음을 실제 graph.json 내용으로 확인한다."""
+    http, _store = client
+    res = http.post(
+        "/tasks",
+        json={
+            "domain_code": "WEB",
+            "title": "그래프 연결 태스크",
+            "description": "충분히 긴 설명 텍스트로 최소 길이 요건을 충족시킨다",
+            "source_req_ids": ["REQ-TECH-WEB-001"],
+            "acceptance_criteria": ["동작 확인"],
+            "impact_scope": ["frontend/views/x.html"],
+            "solution_stack": ["FastAPI"],
+        },
+    )
+    assert res.status_code == 200
+    task_id = res.json()["data"]["task_id"]
+
+    graph = _read_graph()
+    task_nodes = [n for n in graph["nodes"] if n["kind"] == NodeKind.TASK.value]
+    assert len(task_nodes) == 1
+    assert task_nodes[0]["node_id"] == task_id
+    assert task_nodes[0]["label"] == "그래프 연결 태스크"
+
+    implements_edges = [e for e in graph["edges"] if e["kind"] == "IMPLEMENTS"]
+    assert len(implements_edges) == 1
+    assert implements_edges[0]["source_id"] == task_id
+    assert implements_edges[0]["target_id"] == "REQ-TECH-WEB-001"
+
+    # 고아 엣지 방지 확인: 엣지의 source_id(task_id)를 가리키는 노드가 실제로 그래프에 있다.
+    node_ids = {n["node_id"] for n in graph["nodes"]}
+    assert implements_edges[0]["source_id"] in node_ids
+    assert graph.get("rejected_edges", []) == []
+
+
+def test_create_task_without_source_req_ids_merges_node_but_no_edge(client):
+    """source_req_ids가 비어 있으면 IMPLEMENTS 엣지는 생기지 않지만 Task 노드는 여전히
+    merge되어야 한다(추후 요구사항이 연결될 때를 대비한 완전한 그래프 표현)."""
+    http, _store = client
+    res = http.post("/tasks", json={"domain_code": "WEB", "title": "단독 태스크", "description": "x" * 25})
+    assert res.status_code == 200
+    task_id = res.json()["data"]["task_id"]
+
+    graph = _read_graph()
+    task_nodes = [n for n in graph["nodes"] if n["kind"] == NodeKind.TASK.value]
+    assert len(task_nodes) == 1
+    assert task_nodes[0]["node_id"] == task_id
+    assert [e for e in graph["edges"] if e["source_id"] == task_id] == []

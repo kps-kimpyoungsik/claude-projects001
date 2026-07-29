@@ -36,8 +36,8 @@ from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.adapters.persistence.requirement_store import RequirementRecord, RequirementStore
 from backend.adapters.persistence.task_store import TaskStore
 from backend.application.services.graph_pipeline_service import merge_into_graph
+from backend.domain.entities.requirement import make_requirement_node
 from backend.domain.entities.task import InvalidDomainCodeError, Task
-from backend.domain.graph.entities import Node, NodeKind
 from backend.domain.requirements.classifier import ClassificationResult
 from backend.domain.requirements.codes import DOMAIN_CODES, LAYER_CODES, REQUIREMENT_TYPES
 from backend.domain.requirements.design_gate import evaluate_design_draft_gate
@@ -143,7 +143,9 @@ def _preview_access_log_path(project_id: str = DEFAULT_PROJECT_ID):
 # 요구사항이 채번될 때마다 이 경로에 노드를 동기화한다.
 
 
-def sync_requirement_to_graph(record: RequirementRecord, project_id: str = DEFAULT_PROJECT_ID) -> None:
+def sync_requirement_to_graph(
+    record: RequirementRecord, project_id: str = DEFAULT_PROJECT_ID, extra_doc_types: set[str] | None = None
+) -> None:
     """[2026-07-25 고도화] Requirement 1건을 그래프 Requirement 노드로 동기화.
 
     `tasks_api.py`가 `TaskStore.create_or_update(task, graph=...)`에 그래프를 배선하려면
@@ -151,12 +153,21 @@ def sync_requirement_to_graph(record: RequirementRecord, project_id: str = DEFAU
     배선만 하면 `verify_task_requirement_links()`가 모든 source_req_ids를 "그래프에 없음"으로
     판정해 전체 Task가 강제 DRAFT로 회귀한다(`plans/_plan/UPGRADE_PLAN_2026-07-24_5agent.md`
     "P1 #6" 심층분석 참조). `merge_into_graph()`의 기존 중복노드 거부 로직을 그대로
-    재사용한다(CRZ, 신규 병합로직 없음)."""
-    node = Node(
-        node_id=record.req_id,
-        kind=NodeKind.REQUIREMENT,
-        label=(record.description[:80] if record.description else record.req_id),
+    재사용한다(CRZ, 신규 병합로직 없음).
+
+    [2026-07-29 배선, directive D-eebcef47] 노드 구성 자체는 domain 팩토리
+    `make_requirement_node()`(`backend/domain/entities/requirement.py`)로 위임한다 —
+    이 함수가 직접 `Node()`를 재구성하던 우회를 없애 팩토리 경유로 정합성을 회복한다(CRZ).
+    label/source_ref의 기존 폴백 계산(80자 절단·req_id 대체)은 팩토리 배선 전후로 동일하게
+    유지해 회귀 0을 보장한다. `extra_doc_types` — `create_requirement_manual()`처럼 런타임
+    등록 커스텀 문서유형으로 채번된 REQ ID를 동기화할 때 그 코드 집합을 그대로 전달해야
+    `make_requirement_node()`의 REQ ID 형식 재검증이 오탐하지 않는다(문서 업로드/재청킹
+    경로는 항상 내장 문서유형만 쓰므로 생략 시 기본값 None으로 기존과 동일하게 동작)."""
+    node = make_requirement_node(
+        req_id=record.req_id,
+        description=(record.description[:80] if record.description else record.req_id),
         source_ref=record.source_ref or record.req_id,
+        extra_doc_types=extra_doc_types,
     )
     merge_into_graph(_graph_path(project_id), nodes=[node], edges=[])
 
@@ -252,7 +263,7 @@ def create_requirement_manual(body: ManualRequirementCreateRequest, project_id: 
             source_ref=f"manual::{body.actor}",
             extra_doc_types=known_doc_types,
         )
-        sync_requirement_to_graph(record, project_id)
+        sync_requirement_to_graph(record, project_id, extra_doc_types=known_doc_types)
     return envelope(ok=True, data=asdict(record))
 
 

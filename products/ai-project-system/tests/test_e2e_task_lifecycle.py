@@ -11,8 +11,11 @@ from fastapi.testclient import TestClient
 
 from backend.adapters.api import tasks_api
 from backend.adapters.persistence import project_scope
+from backend.adapters.persistence.file_lock import graph_path
 from backend.adapters.persistence.task_store import TaskStore
 from backend.application.services.completion_report_service import build_completion_report
+from backend.application.services.graph_pipeline_service import merge_into_graph
+from backend.domain.entities.requirement import make_requirement_node
 from backend.server import app
 
 
@@ -25,6 +28,23 @@ def client(tmp_path, monkeypatch):
     # 없으면 실제 data/.graphify-out/graph.json(다른 테스트·실사용이 채운 그래프)을 읽어 이
     # 테스트의 source_req_ids가 "그래프에 없음"으로 오판정되어 태스크가 DRAFT에 강제 고정된다.
     monkeypatch.setattr(project_scope, "resolve_project_data_dir", lambda project_id: tmp_path / project_id)
+
+    # [2026-07-29 회귀수정, directive D-eebcef47] `POST /tasks`가 이제 Task 생성 시점에
+    # Task 노드를 그래프에 merge한다(고아 엣지 방지, T92 GDI) — 그 결과 이 파일의 첫 번째
+    # Task 생성부터 graph.json이 실재하게 되어, 이후 생성되는 Task의 `_load_graph()`가 더
+    # 이상 `None`이 아니게 된다. `check_sufficiency()`는 graph가 주어지면
+    # `verify_task_requirement_links()`로 source_req_ids가 그래프상 실제 Requirement
+    # 노드인지까지 검증하므로, 이 파일이 쓰는 "REQ-TECH-WEB-001"이 그래프에 실재하지
+    # 않으면 두 번째 이후 Task부터 "그래프에 없는 요구사항 참조"로 needs_escalation=True가
+    # 되어 상태 전이가 서킷 브레이커에 막힌다(회귀). 실제 운영에서는 문서 업로드/수동 등록 시
+    # `requirements_api.sync_requirement_to_graph()`가 이 노드를 먼저 채워두므로, 테스트도
+    # 그 전제(요구사항이 먼저 그래프에 실재)를 동일하게 맞춘다(CRZ — 신규 헬퍼 로직 없음,
+    # 기존 `make_requirement_node`/`merge_into_graph`만 재사용).
+    merge_into_graph(
+        graph_path("default"),
+        nodes=[make_requirement_node("REQ-TECH-WEB-001", description="테스트용 요구사항", source_ref="test fixture")],
+        edges=[],
+    )
     return TestClient(app), store
 
 
