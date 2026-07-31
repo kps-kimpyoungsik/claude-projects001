@@ -171,3 +171,79 @@ def test_update_fields_unknown_project_raises(tmp_path):
     import pytest
     with pytest.raises(ProjectValidationError):
         registry.update_fields("proj-999", name="x")
+
+
+# [2026-07-30 커버리지 보완] 아래 4개 테스트는 그동안 실행되지 않던 분기(delete() False
+# 경로, create()의 seq 충돌 재시도 루프, update_status()/update_fields()의 DEFAULT_PROJECT_ID
+# materialize 경로 + 존재하지 않는 project_id에 대한 최종 raise)를 다룬다 — 순수 커버리지
+# 목적이며 프로덕션 로직은 변경하지 않는다(테스트 전용 추가).
+
+
+def test_delete_unknown_project_returns_false(tmp_path):
+    """[Line 160] 존재하지 않는 project_id는 예외 없이 False를 반환한다(이미 없는 것도
+    목표 상태이므로) — 지금까지 이 분기를 실행하는 테스트가 없었다."""
+    registry = ProjectRegistry(tmp_path / "projects_registry.json")
+    created = registry.create("삭제용 프로젝트")
+    assert registry.delete(created.id) is True  # 실제 삭제 성공(len 달라짐) 경로도 함께 확인
+    assert registry.delete("proj-999") is False
+
+
+def test_create_retries_sequence_number_on_id_collision(tmp_path):
+    """[Line 136-137] `seq = len(records) + 1`로 계산한 다음 번호가 이미 존재하는 id와
+    충돌하면 while 루프가 seq를 증가시키며 재시도한다 — 레코드 1건을 지운 뒤 새로 만들면
+    `len(records)+1`이 기존에 남아있는 더 큰 번호와 충돌하는 상황을 재현한다."""
+    registry = ProjectRegistry(tmp_path / "projects_registry.json")
+    p1 = registry.create("A")  # proj-001
+    p2 = registry.create("B")  # proj-002
+    registry.delete(p1.id)  # proj-001 삭제 -> len(records)==1 상태에서 다음 seq 계산이 1+1=2로
+    # proj-002(p2)와 충돌하도록 만든다 -> while 루프가 3으로 재시도해야 한다.
+    p3 = registry.create("C")
+    assert p3.id == "proj-003"
+    assert p3.id != p2.id
+
+
+def test_update_status_materializes_default_project_when_absent(tmp_path):
+    """[Line 182-191] DEFAULT_PROJECT_ID는 파일에 레코드가 없어도 list_all()에서 가상으로
+    보이는데, 그 상태에서 update_status()를 호출하면 파일에 실제로 구체화(materialize)돼야
+    한다."""
+    registry = ProjectRegistry(tmp_path / "projects_registry.json")
+    updated = registry.update_status(DEFAULT_PROJECT_ID, "ON_HOLD")
+    assert updated.id == DEFAULT_PROJECT_ID
+    assert updated.status == "ON_HOLD"
+
+    raw = json.loads((tmp_path / "projects_registry.json").read_text(encoding="utf-8"))
+    assert any(r["id"] == DEFAULT_PROJECT_ID and r["status"] == "ON_HOLD" for r in raw)
+
+
+def test_update_status_unknown_non_default_project_raises(tmp_path):
+    """[Line 193] DEFAULT_PROJECT_ID가 아니면서 파일에도 없는 project_id는 최종 raise로
+    떨어진다."""
+    registry = ProjectRegistry(tmp_path / "projects_registry.json")
+    import pytest
+    with pytest.raises(ProjectValidationError):
+        registry.update_status("proj-999", "ON_HOLD")
+
+
+def test_update_fields_rejects_whitespace_only_name(tmp_path):
+    """[Line 210] name이 공백 문자로만 구성돼 strip() 후 빈 문자열이면 거부한다."""
+    registry = ProjectRegistry(tmp_path / "projects_registry.json")
+    created = registry.create("원래 이름")
+    import pytest
+    with pytest.raises(ProjectValidationError):
+        registry.update_fields(created.id, name="   ")
+
+
+def test_update_fields_materializes_default_project_when_absent(tmp_path):
+    """[Line 228-242] update_status()와 동일한 materialize 패턴 — update_fields()도
+    DEFAULT_PROJECT_ID가 파일에 없으면 그 시점에 구체화한다."""
+    registry = ProjectRegistry(tmp_path / "projects_registry.json")
+    updated = registry.update_fields(
+        DEFAULT_PROJECT_ID, name="바뀐 기본 프로젝트", start_date="2026-09-01", end_date="2026-12-31"
+    )
+    assert updated.id == DEFAULT_PROJECT_ID
+    assert updated.name == "바뀐 기본 프로젝트"
+    assert updated.start_date == "2026-09-01"
+    assert updated.end_date == "2026-12-31"
+
+    raw = json.loads((tmp_path / "projects_registry.json").read_text(encoding="utf-8"))
+    assert any(r["id"] == DEFAULT_PROJECT_ID and r["name"] == "바뀐 기본 프로젝트" for r in raw)

@@ -78,6 +78,15 @@ class TaskStatusChangeEvent:
     actor: str
     reason: str | None = None
     ts: str = ""
+    # [2026-07-30 고도화, 02_ENHANCEMENT_REQUIREMENTS.md S3-5] DONE reason은 자유텍스트라
+    # "완료됐다"는 자기신고만으로 상태가 바뀔 수 있었다(00_PROJECT_CONSTITUTION §6이 이미
+    # 정직하게 자인한 기존 한계). completion_report(호출자가 선택적으로 넘긴 git diff --stat
+    # 파싱 결과, `completion_report_service.build_completion_report()` 재사용, CRZ)가 있으면
+    # 여기 그대로 첨부하고, evidence_verified는 그 안에 실제 변경 파일이 1건 이상 있을 때만
+    # True다 — reason 텍스트를 대체하지 않고 **나란히** 붙는 구조적 근거일 뿐이다(하드 차단
+    # 아님, 기존 DONE 전이를 깨지 않는다 — completion_report 미제공 시 이전과 100% 동일 동작).
+    completion_report: dict | None = None
+    evidence_verified: bool = False
 
 
 def validate_transition(from_status: str, to_status: str, reason: str | None) -> None:
@@ -99,13 +108,27 @@ def validate_transition(from_status: str, to_status: str, reason: str | None) ->
         )
 
 
-def build_status_change_event(from_status: str, to_status: str, actor: str, reason: str | None) -> dict:
-    """검증 통과 후 감사로그 이벤트를 만든다 — 저장(append)은 TaskStore(adapter) 책임."""
+def build_status_change_event(
+    from_status: str,
+    to_status: str,
+    actor: str,
+    reason: str | None,
+    completion_report: dict | None = None,
+) -> dict:
+    """검증 통과 후 감사로그 이벤트를 만든다 — 저장(append)은 TaskStore(adapter) 책임.
+
+    `completion_report`(선택)가 있고 `files_changed`가 1건 이상이면 `evidence_verified=True` —
+    "reason 텍스트만 있고 실제 diff 근거가 없는 DONE"과 "실제 변경분과 함께 보고된 DONE"을
+    감사로그 조회 시점에 구분할 수 있게 한다(추정 검증 아님, 있는 그대로 정직 표기 — T98 AIP).
+    """
+    evidence_verified = bool(completion_report and completion_report.get("files_changed"))
     event = TaskStatusChangeEvent(
         from_status=from_status,
         to_status=to_status,
         actor=actor,
         reason=reason,
         ts=datetime.now(timezone.utc).isoformat(),
+        completion_report=completion_report,
+        evidence_verified=evidence_verified,
     )
     return asdict(event)

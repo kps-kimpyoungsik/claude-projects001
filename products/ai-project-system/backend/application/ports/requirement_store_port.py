@@ -8,7 +8,6 @@ DB 구현으로 교체해도 호출부(application 계층)가 구체 클래스�
 """
 
 from abc import ABC, abstractmethod
-from pathlib import Path
 
 from backend.domain.requirements.classifier import ClassificationResult
 
@@ -29,10 +28,6 @@ class RequirementStorePort(ABC):
 
     @abstractmethod
     def list_all(self) -> list:
-        pass
-
-    @abstractmethod
-    def export_json(self, export_path: Path) -> None:
         pass
 
     @abstractmethod

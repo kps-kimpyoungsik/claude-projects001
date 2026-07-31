@@ -93,6 +93,21 @@ application 계층이 Port 대신 concrete adapter를 직접 참조해 "포트�
 | **P3** | §5 영역코드 실사용 확대(라이브 데이터 축적) | 코드 문제가 아니라 실사용 데이터 축적의 문제 |
 | **보류** | PII 게이트 재설계(#3) | 앱 전체 스코프 확대 필요, 이번엔 착수 안 함 |
 
+### 진행 기록 — 2026-07-30 (`/autolp` 세션, 실측 기반 상태 갱신 — T101 SOSC reconcile-first)
+
+> **[중요]** 아래 항목들은 **이 문서 작성 이후 다른 세션이 이미 해결**했음을 git log·코드·테스트
+> 실측으로 확인했다(같은 종류의 문서 드리프트가 이 세션에서만 2회째 재발 — 앞으로 이 표 갱신을
+> 습관화한다).
+
+| 항목 | 상태 | 근거 |
+|---|---|---|
+| graph.json 파이프라인 설계+배선(#6) | **완료** | `tasks_api.py:111` `create_or_update(task, graph=_load_graph(project_id))` + `merge_into_graph()`로 TASK 노드·IMPLEMENTS 엣지 실제 병합(commit `4adc9ea`, `40379a6`). `tests/test_tasks_api.py::test_create_task_merges_task_node_and_implements_edge_into_graph` 통과로 검증됨(전체 회귀 포함). |
+| application→Port 시그니처 정리(#5, TaskStore) | **완료** | `task_dispatch_service.py:44` 이미 `task_store: TaskStorePort` 타입힌트(concrete `TaskStore` 아님). |
+| 백업/pm2 프로세스 매니저 | **완료** | `ecosystem.config.js`(boot_preflight 회로차단기 포함) + `backup/`(`BACKUP_HISTORY.jsonl`+`VERSIONS/`, T84 IBP) 이미 존재(commit `4e6a541`). |
+| CI/CD | **이번 세션 신설** | `.github/workflows/tests.yml` + `requirements.txt`(이전엔 의존성 매니페스트 자체가 없어 CI 구성이 구조적으로 불가능했음) 신규 추가. |
+| postgres/persistence 이중구조 drift 체크리스트 | **보류 유지** | 사용자 명시 DEFER(`D-c92bd806`, AEGIS 시스템 이전·배포전략 수립 후) — 이번 세션 착수 안 함. |
+| §5 영역코드 실사용 확대 | **보류 유지** | 코드 문제가 아닌 실사용 데이터 축적 문제, 그대로 유효. |
+
 ---
 
 ## 진행 기록 — 2026-07-24 (사용자 지시: "다음작업진행 안정적, 평식승인 3번은 더 심층적 영향도 검토")

@@ -5,6 +5,7 @@ from backend.adapters.persistence.requirement_store import RequirementRecord, Re
 from backend.adapters.persistence.task_store import TaskStore
 from backend.application.services.agent_dispatch_resolver import AgentResolution
 from backend.application.services.task_dispatch_service import (
+    _aggregate_work_status,
     compute_priority,
     dispatch_tasks,
     sync_requirement_work_status,
@@ -201,3 +202,10 @@ def test_sync_requirement_work_status_not_dispatched_when_no_task_references(tmp
     updated = {r.req_id: r for r in req_store.list_all()}["REQ-BIZ-SEC-001"]
     assert updated.work_status == "NOT_DISPATCHED"
     assert updated.assigned_agent_command is None
+
+
+def test_aggregate_work_status_falls_back_to_not_dispatched_for_unrecognized_statuses():
+    """[커버리지 보완] Task.status 값이 매핑 규칙(BLOCKED/IN_PROGRESS/DRAFT/READY/DONE)
+    어디에도 해당하지 않으면(예: 향후 신규 status 추가로 인한 과도기) 방어적으로
+    NOT_DISPATCHED로 정직하게 귀결된다."""
+    assert _aggregate_work_status(["SOME_FUTURE_STATUS"]) == "NOT_DISPATCHED"

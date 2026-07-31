@@ -43,8 +43,12 @@
 
       let inputEl = null;
       if (isPrompt) {
-        inputEl = document.createElement("input");
-        inputEl.type = "text";
+        // [2026-07-30 고도화, tasks.html git_diff_stat 입력] 여러 줄 텍스트(예: git diff
+        // --stat 출력)를 받아야 하는 프롬프트는 opts.multiline으로 <textarea>를 쓴다 —
+        // 기존 단일행 <input>은 그대로 유지(회귀 없음, 신규 옵션만 추가).
+        inputEl = document.createElement(opts.multiline ? "textarea" : "input");
+        if (!opts.multiline) inputEl.type = "text";
+        else inputEl.rows = 6;
         inputEl.className = "ui-dialog-input";
         inputEl.value = opts.defaultValue || "";
         box.appendChild(inputEl);
@@ -95,7 +99,9 @@
         if (e.key === "Escape") {
           e.preventDefault();
           finish(cancelValue());
-        } else if (e.key === "Enter") {
+        } else if (e.key === "Enter" && !opts.multiline) {
+          // multiline(textarea)에서는 Enter가 줄바꿈으로 그대로 동작해야 한다 — 확인은
+          // 버튼 클릭으로만(단일행 input과의 유일한 동작 차이, CRZ 나머지 로직 공유).
           e.preventDefault();
           finish(confirmValue());
         }
@@ -132,8 +138,13 @@
     return baseDialog({ message: String(message), kind: "prompt", defaultValue: defaultValue || "" });
   }
 
-  window.AegisDialog = { uiAlert: uiAlert, uiConfirm: uiConfirm, uiPrompt: uiPrompt };
+  function uiPromptTextarea(message, defaultValue) {
+    return baseDialog({ message: String(message), kind: "prompt", defaultValue: defaultValue || "", multiline: true });
+  }
+
+  window.AegisDialog = { uiAlert: uiAlert, uiConfirm: uiConfirm, uiPrompt: uiPrompt, uiPromptTextarea: uiPromptTextarea };
   window.uiAlert = uiAlert;
   window.uiConfirm = uiConfirm;
   window.uiPrompt = uiPrompt;
+  window.uiPromptTextarea = uiPromptTextarea;
 })();

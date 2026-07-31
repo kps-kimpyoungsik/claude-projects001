@@ -103,6 +103,7 @@ async def upload_document(
                 actor=actor,
                 req_store=req_store,
                 doc_store=doc_store,
+                project_id=project_id,
             )
         except (UnsupportedUploadFormatError, NotImplementedUploadFormatError, ValueError) as exc:
             # job_registry.submit_job()의 공통 예외 처리기가 이 속성을 읽어 폴링 응답의
@@ -137,6 +138,7 @@ async def upload_document(
             "chunk_count": result.chunk_count,
             "requirements_created": [r.req_id for r in result.requirements_created],
             "unclassified_chunk_count": result.unclassified_chunk_count,
+            "known_failure_warning": result.known_failure_warning,
         }
 
     job_id = job_registry.submit_job("upload", _run_upload_job)

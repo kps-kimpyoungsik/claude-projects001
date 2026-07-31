@@ -118,13 +118,3 @@ def test_list_all_returns_all_records(store):
     assert len(store.list_all()) == 2
 
 
-def test_export_json_writes_file(store, tmp_path):
-    classification = classify_chunk(SECURITY_TEXT)
-    store.add_from_classification(classification, description="a", source_ref="doc::child:0")
-    export_path = tmp_path / "sub" / "export.json"
-    store.export_json(export_path)
-    assert export_path.exists()
-    import json
-
-    data = json.loads(export_path.read_text(encoding="utf-8"))
-    assert len(data) == 1

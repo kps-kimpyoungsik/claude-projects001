@@ -110,3 +110,12 @@ def test_render_page_triggers_cache_limit_enforcement(tmp_path):
         render_page(pdf, page_number, cache_dir)
 
     assert len(list(cache_dir.glob("*.png"))) == 3
+
+
+def test_enforce_cache_limit_noop_when_cache_dir_does_not_exist(tmp_path):
+    """[커버리지 보완] cache_dir 자체가 아직 생성되지 않은 상태(첫 렌더링 이전)에서
+    호출돼도 예외 없이 조용히 반환한다."""
+    from backend.application.services.page_render_service import _enforce_cache_limit
+
+    non_existent = tmp_path / "never_created"
+    _enforce_cache_limit(non_existent)  # 예외 없이 통과하면 성공

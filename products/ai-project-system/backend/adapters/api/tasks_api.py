@@ -10,6 +10,7 @@ MCP 호출을 하는 것은 아니다(그런 채널은 존재하지 않음, 과�
 
 import json
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -21,6 +22,7 @@ from backend.adapters.persistence.file_lock import graph_path as _graph_path
 from backend.adapters.persistence.file_lock import write_lock as _write_lock
 from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.adapters.persistence.task_store import TaskStore
+from backend.application.services.completion_report_service import build_completion_report
 from backend.application.services.graph_pipeline_service import merge_into_graph
 from backend.domain.entities.requirement import make_implements_edge
 from backend.domain.entities.task import InvalidDomainCodeError, Task, make_task_node
@@ -58,6 +60,11 @@ class TaskStatusChangeRequest(BaseModel):
     # (사람이 검토했음을 명시 — 자동/자율 세션이 임의로 True를 보내지 않도록 API 소비자
     # 쪽에서 실제 사람 확인 후에만 세팅하는 것을 전제로 한다, 강제 검증 코드는 없음).
     override_escalation: bool = False
+    # [2026-07-30 고도화, 02_ENHANCEMENT_REQUIREMENTS.md S3-5] 선택 필드 — DONE 전이 시
+    # 호출자가 `git diff --stat` 원문 텍스트를 함께 보내면 completion_report_service로
+    # 파싱해 status_history에 구조적 근거로 첨부한다. 미제공(None, 기본값)이면 이전과 100%
+    # 동일하게 동작(하드 차단 없음 — reason 자유텍스트만으로도 여전히 DONE 가능, 회귀 없음).
+    git_diff_stat: str | None = None
 
 
 def get_task_store(project_id: str = DEFAULT_PROJECT_ID) -> TaskStore:
@@ -136,6 +143,23 @@ def get_task(task_id: str, project_id: str = Query(DEFAULT_PROJECT_ID)):
 @router.post("/{task_id}/status")
 def change_task_status(task_id: str, body: TaskStatusChangeRequest, project_id: str = Query(DEFAULT_PROJECT_ID)):
     store = get_task_store(project_id)
+
+    # [2026-07-30 고도화] git_diff_stat이 오면 completion_report_service로 미리 파싱한다
+    # (락 밖에서 — 순수 문자열 파싱이라 I/O 경합 없음, CRZ). source_req_ids는 기존 Task
+    # 레코드에서 가져온다(요청 바디에 다시 넣게 하지 않음 — 이미 서버가 아는 값 재입력 강요 금지).
+    completion_report: dict | None = None
+    if body.git_diff_stat is not None:
+        existing_task = store.get(task_id)
+        if existing_task is None:
+            return JSONResponse(status_code=404, content=error_envelope("AEGIS-NOTFOUND", f"존재하지 않는 task_id: {task_id}"))
+        report = build_completion_report(
+            task_id=task_id,
+            source_req_ids=existing_task.source_req_ids,
+            git_diff_stat_output=body.git_diff_stat,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+        completion_report = asdict(report)
+
     with _write_lock:
         try:
             task = store.set_status(
@@ -144,6 +168,7 @@ def change_task_status(task_id: str, body: TaskStatusChangeRequest, project_id: 
                 actor=body.actor,
                 reason=body.reason,
                 override_escalation=body.override_escalation,
+                completion_report=completion_report,
             )
         except KeyError:
             return JSONResponse(status_code=404, content=error_envelope("AEGIS-NOTFOUND", f"존재하지 않는 task_id: {task_id}"))

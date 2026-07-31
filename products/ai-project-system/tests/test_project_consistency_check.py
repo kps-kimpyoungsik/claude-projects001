@@ -69,3 +69,35 @@ def test_find_orphans_reports_config_without_project(tmp_path):
     result = find_orphans(registry, factory, data_root=tmp_path)
 
     assert "proj-ghost" in result["configs_without_project"]
+
+
+def test_find_orphans_defaults_to_real_data_root_when_not_specified(tmp_path):
+    """[커버리지 보완] data_root를 생략하면 project_scope.DATA_ROOT(실제 배포 시 사용하는
+    기본 경로)로 폴백한다 — find_orphans()는 읽기전용(탐지만, 자동 수정 없음)이라 실제
+    data/ 디렉터리를 대상으로 호출해도 안전하다(이 함수 자체의 안전성 원칙과 동일)."""
+    registry = ProjectRegistry(tmp_path / "projects_registry.json")
+
+    def factory(project_id: str) -> ProjectConfigStore:
+        return ProjectConfigStore(tmp_path / project_id / "project_config.json")
+
+    result = find_orphans(registry, factory)  # data_root 생략
+    assert isinstance(result["projects_without_config"], list)
+    assert isinstance(result["configs_without_project"], list)
+
+
+def test_find_orphans_reports_default_project_config_without_registry_entry(tmp_path):
+    """[커버리지 보완] 정상적인 ProjectRegistry는 항상 DEFAULT_PROJECT_ID를 가상으로
+    포함하므로 이 분기는 실사용에서 도달하지 않는다 — registry 파일 손상으로 DEFAULT조차
+    빠지는 극단적 상황을 대비한 방어 코드를 fake registry로 직접 재현해 검증한다."""
+    from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
+
+    class _FakeRegistryWithoutDefault:
+        def list_all(self):
+            return []  # DEFAULT_PROJECT_ID조차 없는 손상된 상태 시뮬레이션
+
+    (tmp_path / "project_config.json").write_text("{}", encoding="utf-8")
+
+    result = find_orphans(
+        _FakeRegistryWithoutDefault(), _config_store_factory(tmp_path), data_root=tmp_path
+    )
+    assert DEFAULT_PROJECT_ID in result["configs_without_project"]

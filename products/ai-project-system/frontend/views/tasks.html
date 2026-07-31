@@ -174,9 +174,22 @@ async function changeTaskStatus(taskId, fromStatus, toStatus) {
     if (!reason) return; // 취소 또는 빈 입력 — 서버도 필수로 요구하므로 전송하지 않음
   }
 
+  // [2026-07-30 고도화, KH-2026-0794] DONE 전이 시 git diff --stat 붙여넣기를 선택적으로
+  // 받는다 — 완전히 옵트인(취소/빈 입력이면 그냥 진행, 서버도 필수로 요구하지 않음).
+  // 백엔드는 이미 tasks_api.py의 git_diff_stat 필드를 받아 completion_report_service로
+  // 파싱해 status_history에 evidence_verified와 함께 첨부한다(회귀 0, CRZ 재사용).
+  let gitDiffStat = null;
+  if (toStatus === "DONE") {
+    gitDiffStat = await uiPromptTextarea(
+      "완료 근거로 `git diff --stat` 출력을 붙여넣을 수 있습니다(선택 — 비워두거나 취소해도 DONE 전이는 그대로 진행됩니다):",
+      ""
+    );
+  }
+
   try {
     const body = { status: toStatus, actor: getActor() };
     if (reason) body.reason = reason;
+    if (gitDiffStat) body.git_diff_stat = gitDiffStat;
     if (task.needs_escalation) body.override_escalation = true;
     const result = await postJSON(
       `/tasks/${encodeURIComponent(taskId)}/status?project_id=${encodeURIComponent(getProjectId())}`,

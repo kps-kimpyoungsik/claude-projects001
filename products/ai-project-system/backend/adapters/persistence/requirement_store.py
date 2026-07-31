@@ -373,9 +373,3 @@ class RequirementStore(RequirementStorePort):
     def list_all(self) -> list[RequirementRecord]:
         data = self._load_all()
         return [RequirementRecord(**record) for record in data.values()]
-
-    def export_json(self, export_path: Path) -> None:
-        """화면(agent-view)이 fetch할 수 있는 배열 형태로 내보낸다(딕셔너리 아님 — 순서 보존)."""
-        records = [asdict(r) for r in self.list_all()]
-        export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")

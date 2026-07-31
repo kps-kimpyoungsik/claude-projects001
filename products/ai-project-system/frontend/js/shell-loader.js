@@ -58,6 +58,22 @@
     });
   }
 
+  /*
+   * [2026-07-30 신규] 환경설정(⚙️) 진입점 — S4 열린 질문("architecture-glossary.html의
+   * 용도·소속 L1 영역") 해소, 사용자 지시: "용어 관련해서는 환경설정 톱니바퀴 버튼 만들어서
+   * 해당 상세 페이지에서 관리". LNB 업무흐름 메뉴(①~⑦)에는 추가하지 않는다 — 이 화면은
+   * 실제 업무 순서(문서→요구사항→배차→…)에 속한 단계가 아니라 참고자료이므로, 다른
+   * 공통 진입점(🔑 API 키)과 동일하게 GNB 우측 버튼으로만 노출한다(신규 설정 화면을
+   * 별도로 만들지 않고 기존 architecture-glossary.html을 그대로 재사용, CRZ).
+   */
+  function initSettingsButton(gnb) {
+    var btn = gnb.querySelector("#ai-gnb-settings-btn");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      location.href = "architecture-glossary.html";
+    });
+  }
+
   function initLnbCollapse(lnb) {
     var btn = lnb.querySelector("#ai-lnb-toggle-btn");
     if (!btn) return;
@@ -122,6 +138,7 @@
         initProjectSwitcher(gnb);
         initThemeToggle(gnb);
         initApiKeyButton(gnb);
+        initSettingsButton(gnb);
         initLnbCollapse(lnb);
       })
       .catch(function (e) {

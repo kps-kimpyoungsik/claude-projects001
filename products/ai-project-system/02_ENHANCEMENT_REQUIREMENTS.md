@@ -88,7 +88,13 @@ vanilla HTML/CSS/JS(프론트) 시스템이다.** 사용자는 프로젝트를 �
 - 청킹 결과 조회(청크맵, gap/overlap 시각화) — 공통 | ③기능
 - 재청킹 요청(`POST /documents/{doc_id}/rechunk`, 실제 실행기) — 개별 | ③
 - 청크-요구사항 원문 위치 조회(char_start/end·heading_path) — 공통 | ③
-- 이미지 포맷 업로드(vision_describe 전략, 어댑터 미구현) — 개별 | ⑪솔루션도입(`aegis-secretary000`)
+- 이미지 포맷 업로드(vision_describe 전략) — 개별 | ⑪솔루션도입(`aegis-secretary000`)
+  **[2026-07-30 구현완료, D-011db847 해소]** 사용자 결정(AskUserQuestion): 로컬 Ollama
+  `moondream`(~1.7GB, 경량) 도입. `VisionDescribeAdapter`(`backend/adapters/parsers/
+  vision_describe_adapter.py`) + `ollama_vision_engine.py`(콜백 주입, faster-whisper와
+  동일 지연로딩 패턴)로 `document_upload_service.py::_ADAPTERS`에 등록. 단위테스트 6건
+  (`tests/test_vision_describe_adapter.py`) + e2e 1건(`test_upload_png_image_describes_
+  via_ollama_vision`) 신규, 전체 회귀 471 passed/0 failed(ground-truth 확인).
 - Excel 대용량 시트 분할 정책(현재 시트=청크 1개 고정) — 개별 | ④비기능
 
 ### [L1-C] 요구사항 관리
@@ -188,11 +194,20 @@ vanilla HTML/CSS/JS(프론트) 시스템이다.** 사용자는 프로젝트를 �
    게이트는 켤 수 있지만 켜는 순간 모든 화면이 401로 깨진다** — "인증 도입 완료"로 오인하면
    위험한 반쪽 구현. UPGRADE_PLAN이 스코프만 산정하고 미구현으로 남긴 항목([기존])의 후속.
 
-3. **[신규] ⑦연계영역도 — graphify-hub 등 AEGIS 외부 검색 연동이 설계 문서에서만 언급되고
-   실제 연동 지점이 없음**: `backend/adapters/aegis_bridge/search_all_adapter.py`가 존재하나
-   UPGRADE_PLAN이 이미 "미문서화 죽은 코드(참조 0건)"로 확인함([기존]). 추가 확인: 이
-   어댑터가 무엇과 연결될 예정이었는지 코드/설계서 어디에도 계약(Port)이 없어, 향후 되살릴 때
-   그대로 재사용 가능한지조차 판단 불가 — 삭제도 보강도 아닌 **미확정 상태로 방치** 중.
+3. **[2026-07-30 재검토 결과 — 이전 서술 부정확 확인, T90 DELP] graphify-hub 등 AEGIS 외부
+   검색 연동**: `backend/adapters/aegis_bridge/search_all_adapter.py`(74줄)는 프로덕션
+   경로(`agent_dispatch_resolver`/`task_dispatch_service`)에서 실제로 import되지 않는 것은
+   맞다(재확인 완료, `grep` 실측). 그러나 **"계약(Port)이 없어 판단 불가"라는 이전 서술은
+   틀렸다** — 파일 docstring 자체가 ①왜 아직 구현 불가인지(aegis-mcp-go의 `harness.Search()`는
+   LLM 툴콜이라 이 프로세스에서 직접 호출 불가, graphify-hub HTTP `/search`는 라이브지만
+   슬래시커맨드 FTS 인덱스가 비어있음을 실측 질의로 확인) ②명시적 확장 지점
+   (`build_search_fn()`이 반환하는 `Callable[[str], list[dict]]`을 `resolve_agent_for_domain
+   (search_fn=...)`에 주입하는 계약) ③`StaticFallbackAdapter`가 정직하게 빈 결과만 반환해
+   `source="search_all"`로 위장하지 않는 이유(T98 AIP)까지 전부 설명한다. **결론: 삭제하지
+   않는다** — 이것은 방치된 죽은 코드가 아니라 "지금은 못 하지만 왜 못 하는지와 언제 되살릴지"를
+   기록한 의도적 placeholder(D-6387bd09 원칙 — 방향 자산은 삭제가 아니라 보존). 전용 테스트
+   (`tests/test_search_all_adapter.py`)도 존재. 재검토 조건: aegis-mcp-go가 HTTP 게이트웨이를
+   노출하거나 graphify-hub 인덱스에 슬래시커맨드가 추가되는 시점.
 
 4. **[신규] ⑬기초뼈대 — Project 레지스트리와 ProjectConfig가 여전히 느슨한 2-store 결합**:
    ground-truth로 이미 알려진 "플래그된 아키텍처 질문"을 코드 레벨로 재확인 —
@@ -202,12 +217,16 @@ vanilla HTML/CSS/JS(프론트) 시스템이다.** 사용자는 프로젝트를 �
    (orphan) 방지 로직 부재 — 실제로 `POST /projects`와 `ProjectConfig` 저장 API가 별도
    호출이라 트랜잭션 경계가 없다.
 
-5. **[신규] ④비기능/⑤업무도 — Task 완료(DONE) reason이 자유텍스트라 실제 완료 증거를
-   검증하지 않음**: 00_PROJECT_CONSTITUTION §6 자체가 "이 reason이 실제 완료 여부를 자동
-   검증하지는 않는다"고 정직하게 기록해둔 기존 한계다([기존], 재확인만). 고도화 관점에서
-   보면 이는 Phase 5(증거 기반 검증 루프)의 다음 단계 후보로 남아있다 — 완료 보고서
-   (`completion_report_service`, git diff --stat)와 reason 텍스트를 교차 검증하는 로직은
-   아직 없음.
+5. **[2026-07-30 부분 해소] ④비기능/⑤업무도 — Task 완료(DONE) reason이 자유텍스트라 실제
+   완료 증거를 검증하지 않음**: 00_PROJECT_CONSTITUTION §6이 "이 reason이 실제 완료 여부를
+   자동 검증하지는 않는다"고 정직하게 기록해둔 기존 한계([기존])에 대해, `/autolp` 세션에서
+   **선택적(옵트인) 근거 첨부**를 추가했다 — `POST /tasks/{task_id}/status`에 `git_diff_stat`
+   필드를 새로 받으면 `completion_report_service.build_completion_report()`로 파싱해
+   `status_history` 이벤트에 `completion_report`+`evidence_verified`(실제 변경 파일 1건
+   이상일 때만 True)를 첨부한다(`task_state_machine.py`·`task_store.py`·`tasks_api.py`).
+   **하드 차단은 아님** — `git_diff_stat` 미제공 시 이전과 100% 동일 동작(회귀 없음, 신규
+   테스트 4건 + 전체 회귀 475 passed/0 failed 확인). "증거 완전 강제"(모든 DONE에 diff 필수)
+   여부는 별도 사용자 결정 필요 — 현재는 구조적 근거를 "제공 가능하게" 만든 단계까지.
 
 6. **[신규] ②영역별/⑤업무도 — `architecture-glossary.html`의 시스템 내 위치가 불분명**: LNB
    메뉴·L1 업무 흐름 어디에도 이 화면으로의 진입 경로가 문서화돼 있지 않다(독립 화면으로만
@@ -237,6 +256,30 @@ vanilla HTML/CSS/JS(프론트) 시스템이다.** 사용자는 프로젝트를 �
    사이클에 포함할지, Redis(`arq`) 기반 워커까지 포함할지 — 후자는 신규 인프라 의존성
    (Redis) 도입이라 §4 드리프트 체크리스트 Q4("범용 인프라가 도구로만 쓰이는가")에 비춰
    반드시 사용자 확인이 필요한 결정.
+
+### S4 해소 기록 (2026-07-30, `/autobuild` 세션)
+
+> **[중요 — 문서 드리프트 발견]** 아래 실측 결과, 항목 1·2·4는 **이 문서가 작성되기 이전
+> 커밋에서 이미 구현 완료** 상태였다(git log 실측: `9e6235b`·`1dc4103`·`5100ee8`가 모두
+> `04d7d63`(본 문서 작성 커밋)보다 먼저 존재). S3/S0 실측 당시 갱신되지 않은 stale 정보를
+> 근거로 재질문한 것 — 재발 방지를 위해 실제 상태를 아래에 기록한다(T39 CRZ).
+
+1. **Project ↔ ProjectConfig 원자적 결합** — 사용자 결정: 강화. **실측: 이미 구현됨**
+   (`backend/application/services/project_creation_service.py::create_project_atomic`,
+   registry 커밋 실패 시 자동 롤백). 추가 조치 불요.
+2. **API 인증 프론트 배선** — 사용자 결정: 보류(이번 사이클 제외). **실측: 이미 구현됨**
+   (`frontend/js/api.js`의 `X-API-Key` opt-in 헤더 배선, 커밋 `1dc4103`). 사용자가 "보류"를
+   선택했으므로 추가 작업은 하지 않음 — 이미 된 상태를 되돌리지도 않음(현행 유지).
+3. **`architecture-glossary.html` 용도** — 사용자 결정: "LNB 메뉴 추가 대신 환경설정
+   톱니바퀴(⚙️) 버튼을 GNB에 신설해 그 상세 페이지에서 관리". **이번 세션에 신규 구현**:
+   `frontend/partials/shell-nav.html`에 `#ai-gnb-settings-btn`(⚙️) 추가,
+   `frontend/js/shell-loader.js::initSettingsButton()`이 클릭 시
+   `architecture-glossary.html`로 이동. LNB 업무흐름 메뉴(①~⑦)에는 추가하지 않음(참고자료이지
+   업무 단계가 아니므로).
+4. **청킹 비동기화** — 사용자 결정: 202+폴링까지만. **실측: 이미 구현됨**
+   (`backend/adapters/api/documents_api.py`의 upload/rechunk가 `job_registry.submit_job()`
+   + `GET /documents/jobs/{job_id}` 폴링으로 전환 완료, 커밋 `5100ee8`+후속 워커 확장
+   `0848fb8`/`c277b07`). Redis(arq) 확장은 사용자가 이번 사이클 범위 밖으로 명시.
 
 ---
 

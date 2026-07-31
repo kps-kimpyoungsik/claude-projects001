@@ -1,0 +1,35 @@
+# ai-project-system 백엔드(FastAPI) 실행/테스트 의존성.
+#
+# [2026-07-30 신설] 이전까지 이 파일이 존재하지 않아(pip freeze 없이 개발 환경에 ad-hoc
+# 설치) CI/신규 개발환경 구축 시 재현 불가능한 상태였다 — 이번 세션 실측(pip show)으로
+# 현재 개발 환경에 실제 설치·검증된 버전을 그대로 고정한다(CRZ, 새 버전 승격 없음).
+# 버전을 올릴 필요가 있으면 별도 검토 후 이 파일만 갱신한다.
+
+fastapi==0.115.13
+uvicorn==0.34.3
+pydantic==2.13.4
+python-multipart==0.0.20
+
+# 문서 파서 어댑터 (backend/adapters/parsers/*)
+python-docx==1.2.0
+python-pptx==1.0.2
+pdfplumber==0.11.10
+openpyxl==3.1.5
+pyhwp==0.1b15
+PyMuPDF==1.26.3
+
+# STT (SpeechToTextAdapter)
+faster-whisper==1.2.1
+
+# Postgres 어댑터 (backend/adapters/db/postgres/*, 현재 미배선 대기 코드 — 어댑터
+# import 자체는 이 패키지를 요구하므로 유지)
+psycopg2-binary==2.9.10
+
+# graphify 노드/엣지 그래프 유틸
+networkx==3.5
+
+# 테스트 전용
+pytest==8.4.2
+httpx==0.28.1  # fastapi.testclient.TestClient 의존성
+reportlab==4.4.10  # 테스트 픽스처(PDF 생성)
+Pillow==12.3.0  # 테스트 픽스처(PNG 생성, D-011db847 vision 업로드 테스트)

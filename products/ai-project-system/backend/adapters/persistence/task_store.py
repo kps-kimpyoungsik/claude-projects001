@@ -106,6 +106,7 @@ class TaskStore(TaskStorePort):
         actor: str,
         reason: str | None = None,
         override_escalation: bool = False,
+        completion_report: dict | None = None,
     ) -> Task:
         """[Phase 4.2] 검증된 상태 전이 — 배차된 agent(또는 이를 대행하는 세션)가 진행상황을
         보고하는 유일한 쓰기 경로. `task_state_machine.validate_transition()`이 전이 그래프를
@@ -114,6 +115,10 @@ class TaskStore(TaskStorePort):
 
         [Phase 5.3] `needs_escalation=True`(서킷 브레이커 트립)인 Task는
         `override_escalation=True`(사람이 검토했음을 명시)를 전달해야만 전이가 허용된다.
+
+        [2026-07-30 고도화] `completion_report`(선택, 호출자가 `completion_report_service.
+        build_completion_report()`로 만든 결과)를 넘기면 감사로그 이벤트에 그대로 첨부돼
+        `evidence_verified` 여부가 기록된다 — 미제공 시 이전과 100% 동일 동작(회귀 없음).
         """
         data = self._load_all()
         if task_id not in data:
@@ -132,7 +137,7 @@ class TaskStore(TaskStorePort):
         if entering_in_progress:
             self._lock_store.acquire(task_id, record.get("impact_scope", []))
 
-        event = build_status_change_event(from_status, status, actor, reason)
+        event = build_status_change_event(from_status, status, actor, reason, completion_report=completion_report)
         record.setdefault("status_history", []).append(event)
         record["status"] = status
         record["updated_at"] = datetime.now(timezone.utc).isoformat()

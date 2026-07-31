@@ -71,3 +71,15 @@ def test_small_community_below_min_split_size_is_not_split():
     small_community = {"x1", "x2"}
     split = _split_oversized(graph, [small_community], total_nodes=3)
     assert split == [small_community]  # MIN_SPLIT_SIZE(10) 미만 — 분할 대상 아님
+
+
+def test_duplicate_edge_between_same_pair_accumulates_weight():
+    """[커버리지 보완] 같은 (source, target) 쌍이 입력 edges에 두 번 나타나면(예: 여러
+    IMPLEMENTS 근거가 같은 노드 쌍을 가리킴) 새 엣지를 추가하는 대신 기존 엣지의
+    weight를 누적한다 — 그래프에 중복 엣지가 남지 않아야 한다."""
+    assignment = detect_communities(
+        ["A", "B"],
+        edges=[("A", "B", 0.5), ("A", "B", 0.3)],
+    )
+    assert set(assignment.keys()) == {"A", "B"}
+    assert assignment["A"] == assignment["B"]  # 연결된 두 노드는 같은 커뮤니티

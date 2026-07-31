@@ -230,7 +230,11 @@ th:hover { color: var(--text-primary); }
 .ui-dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .ui-dialog-box { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--border-radius-base); padding: 20px 24px; max-width: 420px; min-width: 280px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
 .ui-dialog-message { font-size: 13px; color: var(--text-primary); line-height: 1.6; margin-bottom: 14px; white-space: pre-line; }
-.ui-dialog-input { display: block; width: 100%; margin-bottom: 14px; }
+.ui-dialog-input { display: block; width: 100%; margin-bottom: 14px; box-sizing: border-box; }
+/* [2026-07-30] textarea(uiPromptTextarea, 예: git diff --stat 붙여넣기) 전용 보완 —
+   단일행 input과 같은 클래스를 공유하되 크기·글꼴만 다르게(신규 클래스 발명 없음, CRZ). */
+textarea.ui-dialog-input { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; resize: vertical; }
+.ui-dialog-box:has(textarea.ui-dialog-input) { max-width: 560px; }
 .ui-dialog-actions { display: flex; gap: 8px; justify-content: center; }
 .ui-dialog-btn { font-size: 13px; padding: 6px 16px; border-radius: var(--border-radius-base); cursor: pointer; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-weight: 600; }
 .ui-dialog-btn-ok { background: var(--color-brand-primary); border-color: var(--color-brand-primary); color: #fff; }

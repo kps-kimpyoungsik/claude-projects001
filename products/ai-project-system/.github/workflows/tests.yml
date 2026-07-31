@@ -1,0 +1,34 @@
+name: tests
+
+# [2026-07-30 신설, UPGRADE_PLAN_2026-07-24_5agent.md P2 "백업/CI/CD/프로세스매니저 도입"
+# 해소 — pm2(ecosystem.config.js)·백업(backup/, T84 IBP)은 이미 이전 세션에서 도입됨을
+# 실측 확인(회귀 아님, 재구현 안 함), CI/CD만 실제로 부재해 이 워크플로만 신설한다.]
+#
+# Ollama 의존 테스트(vision e2e)는 이 러너에 Ollama가 없으므로 tests/conftest.py의
+# ollama_is_reachable() 헬스체크로 자동 스킵된다(CRZ — 신규 스킵 메커니즘 없음, 기존
+# document_upload_service._build_chunking_splitter()의 헬스체크 폴백 패턴 재사용).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: products/ai-project-system
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v

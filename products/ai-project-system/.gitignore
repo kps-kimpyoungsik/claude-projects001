@@ -6,6 +6,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# pytest-cov 실행 산출물(런타임 측정값, 코드 아님)
+.coverage
+
 # 서버 실행 산출물
 server.log
 server.error.log

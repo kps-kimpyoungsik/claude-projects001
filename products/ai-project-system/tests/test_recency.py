@@ -23,6 +23,15 @@ def test_weight_halves_after_one_half_life():
     assert abs(weight - 0.5) < 1e-9
 
 
+def test_naive_iso_timestamp_without_timezone_is_treated_as_utc():
+    """[커버리지 보완] created_at_iso가 타임존 정보 없는 naive datetime 문자열이면(레거시
+    데이터) UTC로 간주해 계산한다 — aware/naive 혼합 비교 시 TypeError를 내지 않는다."""
+    now = datetime(2026, 1, 31, tzinfo=timezone.utc)
+    naive_created_at = (now - timedelta(days=DEFAULT_HALF_LIFE_DAYS)).replace(tzinfo=None).isoformat()
+    weight = compute_recency_weight(naive_created_at, now)
+    assert abs(weight - 0.5) < 1e-9
+
+
 def test_future_timestamp_is_clamped_to_full_weight():
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     future = (now + timedelta(days=5)).isoformat()

@@ -14,7 +14,7 @@ from backend.adapters.persistence.file_lock import write_lock as _write_lock
 
 # [2026-07-24 보안수정] doc_id가 API 경로 파라미터로 그대로 유입되어 검증 없이
 # `f"{doc_id}.md"` 경로 조합에 쓰이면 경로 순회(CWE-22)가 가능해진다(5-agent 진단
-# 실측 확인). save/load/export_for_preview 3개 진입점 전부가 doc_id를 받으므로 여기서
+# 실측 확인). save/load 2개 진입점 전부가 doc_id를 받으므로 여기서
 # 한 번만 검증하면 모든 호출부(document_upload_service·documents_api·requirements_api)가
 # 방어된다.
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -64,14 +64,3 @@ class DocumentStore:
             return None
         with open(path, "r", encoding="utf-8", newline="") as f:
             return f.read()
-
-    def export_for_preview(self, doc_id: str, export_dir: Path) -> Path | None:
-        """agent-view가 fetch할 수 있는 위치로 그대로 복사(화면은 정적 파일만 fetch 가능)."""
-        content = self.load(doc_id)
-        if content is None:
-            return None
-        export_dir.mkdir(parents=True, exist_ok=True)
-        out_path = export_dir / f"{doc_id}.md"
-        with open(out_path, "w", encoding="utf-8", newline="") as f:
-            f.write(content)
-        return out_path

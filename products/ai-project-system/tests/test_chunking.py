@@ -119,3 +119,68 @@ def test_inject_global_context_preserves_timestamp_fields():
     enriched = inject_global_context(chunk, "테스트 녹음")
     assert enriched.timestamp_start_ms == 0
     assert enriched.timestamp_end_ms == 2500
+
+
+# [2026-07-31 커버리지 보완] 아래는 지금까지 split_with_spans()만 간접 사용돼 실행되지 않던
+# 분기들이다 — HeadingBoundarySplitter.split()(레거시 단순 API), SemanticBoundarySplitter의
+# judge 실패 폴백, 빈 섹션 스킵, SPCEngine의 split_with_spans 미지원 splitter 폴백 경로.
+
+
+def test_heading_boundary_splitter_plain_split_returns_section_strings():
+    """HeadingBoundarySplitter.split()(위치정보 없는 단순 API)이 여전히 올바르게 동작하는지
+    직접 검증 — split_with_spans()와 동일한 섹션 경계를 문자열 리스트로 반환해야 한다."""
+    from backend.domain.chunking.heading_splitter import HeadingBoundarySplitter
+
+    splitter = HeadingBoundarySplitter()
+    sections = splitter.split(DOC)
+    assert len(sections) == 2
+    assert sections[0].startswith("# 사업 개요")
+    assert sections[1].startswith("# 보안 요건")
+
+
+def test_heading_boundary_splitter_plain_split_empty_markdown_returns_empty_list():
+    from backend.domain.chunking.heading_splitter import HeadingBoundarySplitter
+
+    assert HeadingBoundarySplitter().split("   \n\t  ") == []
+
+
+def test_semantic_boundary_splitter_falls_back_when_judge_raises():
+    """[T99 AIOS 우아한 성능저하] judge.judge()가 예외를 던지면(서비스 다운 등) heading 기준
+    분할 결과만 정직하게 반환한다 — 파이프라인을 막지 않는다."""
+    from backend.domain.chunking.heading_splitter import SemanticBoundarySplitter
+
+    class _BrokenJudge:
+        def judge(self, sections):
+            raise RuntimeError("judge 서비스 다운 시뮬레이션")
+
+    splitter = SemanticBoundarySplitter(judge=_BrokenJudge())
+    sections = splitter.split_with_spans(DOC)
+    assert len(sections) == 2
+    for s in sections:
+        assert s["relationships"] == []  # 관계 판단 없이 폴백
+
+
+def test_split_with_spans_skips_leading_whitespace_only_section():
+    """[Line 134] 첫 헤딩 이전에 공백 줄만 있으면(내용 없는 선행 섹션) 결과에서 제외된다."""
+    from backend.domain.chunking.heading_splitter import HeadingBoundarySplitter
+
+    doc = "\n\n# 섹션1\n본문\n"
+    sections = HeadingBoundarySplitter().split_with_spans(doc)
+    assert len(sections) == 1
+    assert sections[0]["heading_path"] == ["섹션1"]
+
+
+def test_spc_engine_falls_back_to_plain_split_when_splitter_lacks_span_support():
+    """[Line 173] splitter가 split_with_spans()를 지원하지 않는 구식 객체여도(hasattr 검사
+    실패) SPCEngine이 plain split()으로 폴백해 정상 동작해야 한다."""
+    class _LegacySplitterWithoutSpans:
+        def split(self, markdown):
+            return [s.strip() for s in markdown.split("\n\n") if s.strip()]
+
+    engine = SPCEngine(splitter=_LegacySplitterWithoutSpans())
+    chunks = engine.process_document(DOC, context_label="테스트", doc_id="doc1")
+    children = [c for c in chunks if c.parent_id is not None]
+    assert len(children) == 2
+    for child in children:
+        assert child.char_start is None  # 구식 splitter는 위치정보를 못 주므로 None 유지
+        assert child.char_end is None

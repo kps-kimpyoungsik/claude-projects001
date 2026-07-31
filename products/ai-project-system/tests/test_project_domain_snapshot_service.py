@@ -306,3 +306,61 @@ def test_diff_snapshots_detects_changed_chunk():
     # process/environment는 scan_subdir을 바꿔도 영향받지 않으므로 UNCHANGED로 남아야 한다
     assert diff["chunks"]["process"]["status"] == "UNCHANGED"
     assert diff["chunks"]["environment"]["status"] == "UNCHANGED"
+
+
+# [2026-07-31 커버리지 보완] AST 스캔 중 손상 파일 처리 + diff_snapshots()의 나머지 분기
+# (양쪽 다 None 스킵·ADDED·REMOVED·non-dict 청크 비교)를 직접 검증한다.
+
+
+def test_build_snapshot_scan_records_syntax_error_without_crashing(tmp_path):
+    """[Line 99-102] 스캔 대상 디렉터리에 문법 오류가 있는 .py 파일이 섞여 있어도 크래시
+    없이 errors 목록에 기록하고 나머지 파일은 정상 스캔한다(T98 AIP 정직 기록)."""
+    scan_dir = tmp_path / "backend"
+    scan_dir.mkdir()
+    (scan_dir / "broken.py").write_text("def broken(:\n    pass", encoding="utf-8")
+    (scan_dir / "ok.py").write_text("def works():\n    pass", encoding="utf-8")
+
+    snapshot = build_project_domain_snapshot(tmp_path, scan_subdir="backend", max_files=50)
+    structure = snapshot["structure"]
+    assert structure["file_count"] == 1  # ok.py만 스캔 성공
+    assert "backend/ok.py" in structure["files_scanned"]
+    assert len(structure["errors"]) == 1
+    assert "broken.py" in structure["errors"][0]
+    assert "SyntaxError" in structure["errors"][0]
+
+
+def test_diff_snapshots_skips_chunk_missing_from_both_sides():
+    """[Line 209] old/new 양쪽 모두 해당 청크가 없으면 diff 결과에서 그냥 건너뛴다."""
+    old = {"structure": {"a": 1}}
+    new = {"structure": {"a": 1}}
+    result = diff_snapshots(old, new)
+    for key in ("environment", "process", "commonization", "technology"):
+        assert key not in result["chunks"]
+
+
+def test_diff_snapshots_detects_newly_added_chunk():
+    """[Line 212-217] old에는 없던 청크가 new에 새로 생기면 ADDED로 표시된다."""
+    old = {"structure": {"a": 1}}
+    new = {"structure": {"a": 1}, "environment": {"zones": ["dmz"]}}
+    result = diff_snapshots(old, new)
+    assert result["chunks"]["environment"]["status"] == "ADDED"
+    assert result["chunks"]["environment"]["changed_keys"] == ["zones"]
+
+
+def test_diff_snapshots_detects_removed_chunk():
+    """[Line 220-225] old에는 있던 청크가 new에서 사라지면 REMOVED로 표시된다."""
+    old = {"structure": {"a": 1}, "environment": {"zones": ["dmz"]}}
+    new = {"structure": {"a": 1}}
+    result = diff_snapshots(old, new)
+    assert result["chunks"]["environment"]["status"] == "REMOVED"
+    assert result["chunks"]["environment"]["changed_keys"] == ["zones"]
+
+
+def test_diff_snapshots_non_dict_chunk_reports_generic_change():
+    """[Line 238] 청크 값이 dict가 아닌 이례적 형태(예: 리스트)로 바뀌면 키 단위 비교 대신
+    통째로 변경(<non-dict-chunk>)으로 표시한다."""
+    old = {"structure": ["a", "b"]}
+    new = {"structure": ["a", "b", "c"]}
+    result = diff_snapshots(old, new)
+    assert result["chunks"]["structure"]["status"] == "CHANGED"
+    assert result["chunks"]["structure"]["changed_keys"] == ["<non-dict-chunk>"]

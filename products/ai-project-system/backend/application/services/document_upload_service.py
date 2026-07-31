@@ -22,6 +22,7 @@ from pathlib import Path
 
 import tempfile
 
+from backend.adapters.error_log import ParseFailure, has_known_failure, log_parse_failure
 from backend.adapters.llm.ollama_semantic_judge import OLLAMA_URL, OllamaSemanticJudge
 from backend.adapters.office_convert.libreoffice_bridge import (
     ConversionFailedError,
@@ -39,8 +40,14 @@ from backend.adapters.parsers.speech_to_text_adapter import (
     SpeechToTextAdapter,
 )
 from backend.adapters.parsers.text_passthrough_adapter import TextPassthroughAdapter
+from backend.adapters.parsers.vision_describe_adapter import (
+    SUPPORTED_IMAGE_EXTENSIONS,
+    VisionDescribeAdapter,
+)
 from backend.adapters.parsers.xlsx_adapter import XlsxParserAdapter
+from backend.adapters.persistence import project_scope
 from backend.adapters.persistence.document_store import DocumentStore
+from backend.adapters.persistence.project_registry import DEFAULT_PROJECT_ID
 from backend.adapters.persistence.requirement_store import RequirementRecord, RequirementStore
 from backend.application.ports.parser_port import ParserPort
 from backend.application.services.requirement_extraction_service import extract_requirements_from_chunks
@@ -82,6 +89,21 @@ def _lazy_faster_whisper_engine(source_path: str):
     return _stt_engine_cache["engine"](source_path)
 
 
+# [D-011db847 후속, 2026-07-30] vision 엔진도 STT와 동일한 지연 로딩 원칙을 적용한다 —
+# `build_ollama_vision_engine()` 자체는 네트워크 호출을 하지 않지만(콜백만 만듦), 모듈
+# import 시점에 만들 이유가 없어 첫 이미지 업로드 시점까지 미룬다(CRZ, 위 whisper 캐시와
+# 동일 패턴 재사용 — 신규 캐싱 메커니즘 발명 없음).
+_vision_engine_cache: dict[str, object] = {}
+
+
+def _lazy_ollama_vision_engine(source_path: str) -> str:
+    if "engine" not in _vision_engine_cache:
+        from backend.adapters.llm.ollama_vision_engine import build_ollama_vision_engine
+
+        _vision_engine_cache["engine"] = build_ollama_vision_engine()
+    return _vision_engine_cache["engine"](source_path)
+
+
 # 실제 동작하는 ParserPort 구현체만 등록한다 — 새 포맷 어댑터가 완성되면 이 리스트에
 # 추가하는 것이 유일한 확장 지점이다(§4 설계 명시).
 _ADAPTERS: list[ParserPort] = [
@@ -92,6 +114,7 @@ _ADAPTERS: list[ParserPort] = [
     XlsxParserAdapter(),  # 2026-07-22 추가 — openpyxl(기설치) 실동작 구현
     HwpParserAdapter(),  # 2026-07-22 추가 — pyhwp(신규 설치) 재사용, 사용자 결정: "olefile+커스텀 파싱"
     SpeechToTextAdapter(stt_engine=_lazy_faster_whisper_engine),  # 2026-07-25 추가 — faster-whisper(기설치) 지연연결
+    VisionDescribeAdapter(vision_engine=_lazy_ollama_vision_engine),  # 2026-07-30 추가 — Ollama moondream 지연연결(D-011db847)
 ]
 
 
@@ -120,6 +143,11 @@ class UploadResult:
     # {doc_id}.pdf로 저장해 페이지 이미지 렌더링(§8-4)이 동작하게 한다. 변환 실패/미해당
     # 포맷이면 None(§8-6 폴백 — page_number/bbox도 함께 None으로 남는다).
     pdf_bytes_for_page_render: bytes | None = None
+    # [error_log.py 재배선, D-664470cc 재활용 설계] 업로드 전 (확장자, 파서전략) 조합의
+    # 과거 실패 이력이 로컬 로그(parse_failures.jsonl)에 있으면 채워지는 경고 문구.
+    # 업로드 자체는 절대 막지 않는다(T99 AIOS 우아한 성능저하) — 결과에 실어 호출자가
+    # 표면화 여부를 판단하게 한다.
+    known_failure_warning: str | None = None
 
 
 def _pick_adapter(ext: str) -> ParserPort:
@@ -144,6 +172,7 @@ def process_uploaded_file(
     actor: str,
     req_store: RequirementStore,
     doc_store: DocumentStore,
+    project_id: str = DEFAULT_PROJECT_ID,
 ) -> UploadResult:
     """업로드된 파일 1건을 파싱→청킹→분류·채번까지 끝까지 처리한다.
 
@@ -189,18 +218,53 @@ def process_uploaded_file(
         adapter = _pick_adapter(original_ext)
         parse_source = content
 
+    # [error_log.py 재배선, D-664470cc 재활용 설계] 실제 파싱 어댑터 호출 직전에 동일
+    # (확장자, 파서전략) 조합의 과거 실패 이력을 확인한다 — 경고만 표면화하고 업로드는
+    # 절대 막지 않는다(T99 AIOS). 실패 시(아래 try/except)에는 이 로그에 새 실패를
+    # 기록한 뒤 기존 예외를 그대로 재발생시켜 기존 422 에러 흐름을 바꾸지 않는다.
+    parse_strategy = FORMAT_STRATEGY.get(ext.lower())
+    parse_failure_log_path = project_scope.resolve_project_data_dir(project_id) / "parse_failures.jsonl"
+    known_failure_warning: str | None = None
+    if parse_strategy and has_known_failure(parse_failure_log_path, ext, parse_strategy):
+        known_failure_warning = (
+            f"이 파일타입({ext}, 전략={parse_strategy})은 과거 동일 방식으로 파싱 실패한 "
+            "이력이 있습니다 — 결과를 확인하세요"
+        )
+
     # [2026-07-25 §D-777d8fd9] SpeechToTextAdapter는 스트림이 아니라 metadata["source_path"]
     # (디스크 경로)를 요구한다(faster-whisper가 ffmpeg 디코딩에 실 경로가 필요, 어댑터
     # docstring §2 참고) — 오디오 확장자일 때만 임시 파일로 써서 전달, 전사 완료 후 정리.
-    if original_ext.lower() in SUPPORTED_AUDIO_EXTENSIONS:
-        with tempfile.TemporaryDirectory() as audio_tmp_dir:
-            audio_path = Path(audio_tmp_dir) / f"upload{original_ext}"
-            audio_path.write_bytes(parse_source)
-            markdown = adapter.parse_to_markdown(
-                io.BytesIO(parse_source), metadata={"filename": filename, "source_path": str(audio_path)}
-            )
-    else:
-        markdown = adapter.parse_to_markdown(io.BytesIO(parse_source), metadata={"filename": filename})
+    # [D-011db847 후속] VisionDescribeAdapter도 동일한 이유(Ollama vision 호출이 이미지
+    # 바이트를 base64로 다시 읽어야 함 — 어댑터 경계에서 스트림 대신 경로를 넘기는 관례를
+    # 오디오와 통일)로 metadata["source_path"]가 필요하다.
+    try:
+        if original_ext.lower() in SUPPORTED_AUDIO_EXTENSIONS:
+            with tempfile.TemporaryDirectory() as audio_tmp_dir:
+                audio_path = Path(audio_tmp_dir) / f"upload{original_ext}"
+                audio_path.write_bytes(parse_source)
+                markdown = adapter.parse_to_markdown(
+                    io.BytesIO(parse_source), metadata={"filename": filename, "source_path": str(audio_path)}
+                )
+        elif original_ext.lower() in SUPPORTED_IMAGE_EXTENSIONS:
+            with tempfile.TemporaryDirectory() as image_tmp_dir:
+                image_path = Path(image_tmp_dir) / f"upload{original_ext}"
+                image_path.write_bytes(parse_source)
+                markdown = adapter.parse_to_markdown(
+                    io.BytesIO(parse_source), metadata={"filename": filename, "source_path": str(image_path)}
+                )
+        else:
+            markdown = adapter.parse_to_markdown(io.BytesIO(parse_source), metadata={"filename": filename})
+    except Exception as exc:
+        log_parse_failure(
+            parse_failure_log_path,
+            ParseFailure(
+                file_ext=ext,
+                filename=filename,
+                error_message=str(exc),
+                parser_strategy=parse_strategy or "",
+            ),
+        )
+        raise
     if not markdown.strip():
         raise ValueError("파싱 결과가 비어 있습니다 — 문서 내용을 확인하세요")
 
@@ -229,6 +293,7 @@ def process_uploaded_file(
         requirements_created=records,
         unclassified_chunk_count=unclassified,
         pdf_bytes_for_page_render=parse_source if ext.lower() == ".pdf" else None,
+        known_failure_warning=known_failure_warning,
     )
 
 

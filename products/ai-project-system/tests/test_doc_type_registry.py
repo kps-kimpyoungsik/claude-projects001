@@ -74,3 +74,14 @@ def test_persists_across_reload(tmp_path):
     reloaded = DocTypeRegistry(path).list_custom()
     assert len(reloaded) == 1
     assert reloaded[0].label == "녹취록"
+
+
+def test_derive_code_raises_when_all_collision_suffixes_exhausted():
+    """[커버리지 보완] base + 알파벳 접미사 26개 조합이 모두 이미 사용 중이면(극단적
+    상황) 코드 유도를 포기하고 사용자에게 직접 code 지정을 요구하는 명시적 에러를 낸다."""
+    from backend.adapters.persistence.doc_type_registry import _COLLISION_SUFFIXES, _derive_code
+
+    base = "CUST"
+    existing = {base} | {base + _COLLISION_SUFFIXES[: i + 1] for i in range(len(_COLLISION_SUFFIXES))}
+    with pytest.raises(DocTypeValidationError, match="code를 직접 지정하세요"):
+        _derive_code("Custom Label", existing)

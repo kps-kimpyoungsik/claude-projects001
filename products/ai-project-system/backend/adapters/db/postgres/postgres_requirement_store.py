@@ -7,10 +7,8 @@ domain 함수를 그대로 재사용한다 — 로직 재구현이 아니라 저
 드롭인 교체가 가능하도록 했다.
 """
 
-import json
 from dataclasses import asdict
 from datetime import datetime, timezone
-from pathlib import Path
 
 from backend.adapters.db.postgres.connection import get_connection
 from backend.adapters.persistence.requirement_store import (
@@ -212,8 +210,3 @@ class PostgresRequirementStore(RequirementStorePort):
             cur.execute("SELECT data FROM requirements ORDER BY req_id")
             rows = cur.fetchall()
         return [RequirementRecord(**r["data"]) for r in rows]
-
-    def export_json(self, export_path: Path) -> None:
-        records = [asdict(r) for r in self.list_all()]
-        export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")

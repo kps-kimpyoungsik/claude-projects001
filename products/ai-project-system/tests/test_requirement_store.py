@@ -126,6 +126,16 @@ def test_set_design_draft_gate_rejects_unknown_value(store):
         store.set_design_draft_gate(record.req_id, "NOT_A_REAL_GATE_VALUE", actor="pm")
 
 
+def test_set_design_draft_gate_unknown_req_id_raises_key_error(store):
+    with pytest.raises(KeyError):
+        store.set_design_draft_gate("REQ-NOT-EXIST-001", "NOT_MANDATORY", actor="pm")
+
+
+def test_set_design_draft_gate_override_unknown_req_id_raises_key_error(store):
+    with pytest.raises(KeyError):
+        store.set_design_draft_gate_override("REQ-NOT-EXIST-001", True, actor="pm")
+
+
 def test_request_rechunk_sets_rejected_with_prefixed_reason_and_appends_queue(store, tmp_path):
     """02_PHASE2_ORCHESTRATION_PREVIEW.md §5-2 — REJECTED 재사용 + rechunk_queue.jsonl append."""
     import json as _json

@@ -70,6 +70,15 @@ def test_design_gate_strategic_mandatory_on_simultaneous_match():
     assert result.design_draft_gate == "STRATEGIC_MANDATORY"
 
 
+def test_design_gate_strategic_mandatory_on_direct_keyword_match():
+    """[커버리지 보완] STRATEGIC_MANDATORY 전용 키워드(예: "API 응답")가 직접 매칭되면
+    MANDATORY/NOT_MANDATORY 동시매칭 규칙을 거치지 않고도 STRATEGIC_MANDATORY로 즉시
+    판정된다."""
+    text = "이 기능의 API 응답 구조를 먼저 정의해야 한다."
+    result = classify_chunk(text)
+    assert result.design_draft_gate == "STRATEGIC_MANDATORY"
+
+
 def test_design_gate_needs_review_when_no_keyword_matches():
     """§2-6 규칙 5) — 아무 것도 안 걸리면 None + (전체 결과) needs_review=True."""
     result = classify_chunk("특별한 키워드가 없는 애매한 잡담성 문장입니다.")
