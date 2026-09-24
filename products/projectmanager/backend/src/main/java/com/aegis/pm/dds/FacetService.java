@@ -30,22 +30,38 @@ import com.aegis.pm.pii.PiiRegistry;
 public class FacetService {
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    /** 상태 컬럼의 표기 — 설계서 §3.1 "상태/여부/구분" + 실측 표기(단계·결과·진행) */
-    private static final Pattern STATUS_WORD = Pattern.compile("상태|여부|구분|단계|결과|진행|status", Pattern.CASE_INSENSITIVE);
-    /** 날짜 컬럼 표기 — 엑셀은 날짜를 일련번호(숫자)로 주는 경우가 많다(실측: WBS 시작·종료예정일) */
-    private static final Pattern DATE_WORD = Pattern.compile("일자|날짜|예정일|완료일|시작일|종료일|등록일|기한|일시|date", Pattern.CASE_INSENSITIVE);
     /** 엑셀 일련번호로 볼 수 있는 범위 — 1954-10 ~ 2119-01 */
     static final double SERIAL_MIN = 20000, SERIAL_MAX = 80000;
-    /** 서술형 헤더 — 값이 전부 달라도 식별자가 아니라 본문이다(실측: 가이드 시트 "설명" 열이 id 로 잡힘) */
-    private static final Pattern PROSE_WORD = Pattern.compile("설명|내용|비고|메모|참고|예시|가이드|방법|규칙|기준|사유|의견|요약|description|note|memo|remark", Pattern.CASE_INSENSITIVE);
-    private static final Pattern ID_WORD = Pattern.compile("ID|번호|코드|No\\.?$|^no$|seq|순번", Pattern.CASE_INSENSITIVE);
 
     private final JdbcTemplate jdbc;
     private final com.aegis.pm.pii.PiiVault pii;
+    private final com.aegis.pm.engine.EngineService engine;
+    private final com.aegis.pm.dataset.DatasetWriter writer;
 
-    public FacetService(JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii) {
+    public FacetService(JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii, com.aegis.pm.engine.EngineService engine,
+                        com.aegis.pm.dataset.DatasetWriter writer) {
         this.jdbc = jdbc;
         this.pii = pii;
+        this.engine = engine;
+        this.writer = writer;
+    }
+
+    private List<Map<String, String>> datasetRows(String datasetId) {
+        return writer.rows(datasetId, 0);
+    }
+
+    /** 시간 열의 최댓값 — 엑셀 일련번호·여러 날짜 표기를 yyyy-MM-dd 로 맞춘 뒤 비교 */
+    static String maxDate(List<String> values) {
+        String best = null;
+        for (String v : values) {
+            if (v == null || v.isBlank()) continue;
+            String d = asDate(v.trim());
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d{4})[-./](\\d{1,2})[-./](\\d{1,2})").matcher(d);
+            if (!m.find()) continue;
+            String iso = String.format("%s-%02d-%02d", m.group(1), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3)));
+            if (best == null || iso.compareTo(best) > 0) best = iso;
+        }
+        return best;
     }
 
     /** 데이터셋 1개 재분류 — 사람이 정한 축·컬럼은 그대로 둔다 */
@@ -58,21 +74,27 @@ public class FacetService {
         String now = LocalDateTime.now().format(TS);
         jdbc.update("DELETE FROM dataset_facet WHERE dataset_id = ? AND source <> 'human'", datasetId);
 
-        // role — 컬럼마다
+        // role — 컬럼마다. 컬럼명·도메인 단어가 아니라 **값의 통계**로 엔진이 판정한다(EngineService·RoleModel).
+        // 사람이 고친 라벨이 쌓이면 kNN 이 사전 규칙을 이긴다. 예외 하나: 개인정보 분류기가 성명 칸으로 본 컬럼은
+        // person — 이것은 역할 추정이 아니라 보호 규칙이다(가명 토큰이 없는 비활성 환경에서도 같은 판정이 나오게).
         Map<String, Integer> roles = new LinkedHashMap<>();
         String baseDate = null;
-        for (Map<String, Object> c : Rows.lower(jdbc.queryForList(
-                "SELECT name, data_type, distinct_n, null_n, min_v, max_v, sum_v FROM dataset_column WHERE dataset_id = ? ORDER BY col_no",
-                datasetId))) {
-            String col = (String) c.get("name");
-            if (num(c.get("null_n")) >= rowCount && rowCount > 0) continue;   // 완전히 빈 열 — 표의 일부가 아니다
-            String[] r = role(col, (String) c.get("data_type"), num(c.get("distinct_n")), num(c.get("null_n")),
-                    c.get("sum_v"), rowCount, str(c.get("min_v")), str(c.get("max_v")));
-            put(datasetId, "role", r[0], "column", col, Double.parseDouble(r[1]), "rule", r[2], now);
-            roles.merge(r[0], 1, Integer::sum);
-            if ("time".equals(r[0]) && c.get("max_v") != null) {
-                String mx = asDate(String.valueOf(c.get("max_v")));
-                if (baseDate == null || mx.compareTo(baseDate) > 0) baseDate = mx;
+        List<Map<String, String>> rows = engine == null ? List.of() : datasetRows(datasetId);
+        com.aegis.pm.engine.RoleModel model = engine.model();
+        for (String col : jdbc.queryForList("SELECT name FROM dataset_column WHERE dataset_id = ? ORDER BY col_no", String.class, datasetId)) {
+            List<String> values = new java.util.ArrayList<>(rows.size());
+            for (Map<String, String> r : rows) values.add(r.get(col));
+            com.aegis.pm.engine.DataProfiler.Profile p = com.aegis.pm.engine.DataProfiler.profile(values);
+            if (p.filled() == 0) continue;   // 완전히 빈 열 — 표의 일부가 아니다
+            com.aegis.pm.engine.RoleModel.Guess g = PiiRegistry.PERSON.equals(PiiRegistry.kindOfHeader(col))
+                    ? new com.aegis.pm.engine.RoleModel.Guess("person", 0.9, "개인정보 분류기 — 성명 칸")
+                    : model.guess(p);
+            put(datasetId, "role", g.role(), "column", col, g.confidence(), g.evidence().startsWith("학습") ? "stat" : "rule",
+                    g.evidence(), now);
+            roles.merge(g.role(), 1, Integer::sum);
+            if ("time".equals(g.role())) {
+                String mx = maxDate(values);
+                if (mx != null && (baseDate == null || mx.compareTo(baseDate) > 0)) baseDate = mx;
             }
         }
 
@@ -108,31 +130,6 @@ public class FacetService {
         out.put("roles", roles);
         out.put("context", context);
         return out;
-    }
-
-    /**
-     * 컬럼 의미 — 설계서 §3.1 규칙. 반환: {role, confidence, 근거}.
-     * 순서가 판정을 바꾼다: 사람(person) → 시간 → 상태 → 식별자 → 측정값 → 텍스트.
-     */
-    static String[] role(String col, String type, int distinct, int nulls, Object sum, int rows, String minV, String maxV) {
-        String name = col == null ? "" : col;
-        if (PiiRegistry.PERSON.equals(PiiRegistry.kindOfHeader(name))) return new String[] { "person", "0.9", "컬럼명이 사람 표기" };
-        if ("date".equals(type)) return new String[] { "time", "0.95", "날짜 타입" };
-        if ("number".equals(type) && DATE_WORD.matcher(name).find() && serial(minV) && serial(maxV)) {
-            return new String[] { "time", "0.85", "날짜 표기 + 엑셀 일련번호 범위" };
-        }
-        if ("category".equals(type) && distinct <= 10 && STATUS_WORD.matcher(name).find()) {
-            return new String[] { "status", "0.9", "범주 " + distinct + "종 + 상태어" };
-        }
-        // 긴 텍스트는 값이 전부 달라도 식별자가 아니다 — 설명 문장 열이 id 로 잡혀 가이드 시트가 역할 점수를 받았다(실측)
-        if (rows >= 3 && distinct == rows && nulls == 0 && !PROSE_WORD.matcher(name).find()
-                && (ID_WORD.matcher(name).find() || "category".equals(type))) {
-            return new String[] { "id", "0.85", "고유값 = 행수, 결측 0" };
-        }
-        if ("number".equals(type) && sum != null) return new String[] { "measure", "0.8", "숫자 + 합계" };
-        // 상태어 없는 범주는 status 가 아니다 — 대체 규칙으로 status 를 주면 가이드·범례 시트가 역할·방향성 점수를
-        // 거저 받는다(실측: 작성가이드·약어 시트가 역할 15/15 로 격리를 피했다)
-        return new String[] { "text", "0.5", "해당 규칙 없음" };
     }
 
     private static boolean serial(String v) {

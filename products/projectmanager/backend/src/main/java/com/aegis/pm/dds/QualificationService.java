@@ -40,9 +40,12 @@ public class QualificationService {
     private final VocabStore vocab;
     private final ObjectMapper json = new ObjectMapper();
 
-    public QualificationService(JdbcTemplate jdbc, VocabStore vocab) {
+    private final com.aegis.pm.engine.EngineService engine;
+
+    public QualificationService(JdbcTemplate jdbc, VocabStore vocab, com.aegis.pm.engine.EngineService engine) {
         this.jdbc = jdbc;
         this.vocab = vocab;
+        this.engine = engine;
     }
 
     @Transactional
@@ -85,6 +88,10 @@ public class QualificationService {
             long nulls = cols.stream().mapToLong(c -> num(c.get("null_n"))).sum();
             double missing = (double) nulls / ((long) rows * n);
             double s3 = 15.0 * ((double) valid / n) * (1 - Math.min(1, missing));
+            // 엔진이 "헤더가 데이터처럼 보인다"고 판정하면(헤더 값이 열에 또 나옴·숫자/날짜 헤더) 컬럼명이 없는 표다 —
+            // 구조 점수를 주지 않는다(실측: WBS_미완료 가 날짜 열 발견으로 격리를 벗어남)
+            boolean headerSuspect = Boolean.TRUE.equals(engine.profile(datasetId).get("headerSuspect"));
+            if (headerSuspect) s3 = 0;
             // 4 주제 응집 — 이 표의 컬럼 중 한 표준으로 설명되는 비율 (표 쪽에서 본 바인딩)
             Integer bound = jdbc.queryForObject("SELECT COUNT(*) FROM dataset_binding WHERE dataset_id = ?", Integer.class, datasetId);
             double s4 = 10.0 * Math.min(1, (bound == null ? 0 : bound) / (double) n);
@@ -97,7 +104,8 @@ public class QualificationService {
             double s6 = 10.0 * Math.min(1, dom);
             // 7 방향성 — 시간 축 · 상태 축
             boolean time = facets.stream().anyMatch(f -> "role".equals(f.get("axis")) && "time".equals(f.get("facet_value")));
-            boolean status = facets.stream().anyMatch(f -> "role".equals(f.get("axis")) && "status".equals(f.get("facet_value")));
+            // 상태 축 = 적은 종류가 반복되는 범주 열(엔진 판정). "상태어" 단어 목록은 쓰지 않는다
+            boolean status = facets.stream().anyMatch(f -> "role".equals(f.get("axis")) && "category".equals(f.get("facet_value")));
             double s7 = (time ? 5 : 0) + (status ? 5 : 0);
             // 8 의도 — 시트명 유의미 · 출처 파일 · 표준 바인딩
             String sheet = str(d.get("sheet_name")).trim();
@@ -115,6 +123,7 @@ public class QualificationService {
             score = (int) Math.round(s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8);
             verdict = score >= QUALIFIED ? "QUALIFIED" : score >= PROVISIONAL ? "PROVISIONAL" : "REJECTED";
             reason = rows + "행 · 컬럼 " + n + "개(유효 " + valid + ") · 사전 " + lex + " · 바인딩 " + (bound == null ? 0 : bound)
+                    + (headerSuspect ? " · 헤더 의심(재적재 권장)" : "")
                     + (time ? " · 시간축" : "") + (status ? " · 상태축" : "");
         }
         String now = LocalDateTime.now().format(TS);

@@ -66,6 +66,8 @@ export const GROUPS = [
       // 표가 아닌 것까지 받는 입구 — 문서·이미지·음성의 원본과 원본 위치(locator)를 보관한다
       { to: '/data/raw', ic: SVG.list, label: '원본 자료', metric: null },
       { to: '/data/sources', ic: SVG.db, label: '데이터셋', metric: 'dataset' },
+      // 값의 통계로 구조·역할·정제를 판단하는 범용 엔진 — 도메인 규칙 없이
+      { to: '/data/engine', ic: SVG.list, label: '자료 분석', metric: null },
       { to: '/data/dashboards', ic: SVG.chart, label: '대시보드', metric: 'dashboard' },
       // 사전은 데이터셋의 부속이 아니라 분류·바인딩·질의가 공통으로 딛는 바닥이다
       { to: '/data/vocab', ic: SVG.list, label: '어휘 사전', metric: null },

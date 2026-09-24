@@ -24,6 +24,7 @@ const EXPECT = {
   '/unittest/scope': '개발완료',
   '/unittest/defects': '결함 관리',
   '/data/sources': '데이터셋',
+  '/data/engine': '자료 분석',
   '/data/dashboards': '대시보드'
 };
 

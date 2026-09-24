@@ -79,7 +79,7 @@ class DdsQualityTest {
         assertEquals("결함", jdbc.queryForObject(
                 "SELECT facet_value FROM dataset_facet WHERE dataset_id='DS-D' AND axis='domain'", String.class), "분야");
         assertEquals("time", role("DS-D", "등록일"));
-        assertEquals("status", role("DS-D", "결함상태"));
+        assertEquals("category", role("DS-D", "결함상태"), "적은 종류가 반복되는 열 — 상태어 단어가 아니라 분포로");
         assertEquals("person", role("DS-D", "담당자"));
         assertEquals("QUALIFIED", verdict("DS-D"));
     }

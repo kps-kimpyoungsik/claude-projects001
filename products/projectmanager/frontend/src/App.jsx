@@ -10,6 +10,7 @@ import Dashboards from './pages/Dashboards';
 import Vocab from './pages/Vocab';
 import Standards from './pages/Standards';
 import CustomDashboard from './pages/CustomDashboard';
+import EngineInventory from './pages/EngineInventory';
 
 /**
  * 라우팅 — Apps Script 원본 `doGet(page=...)` 분기를 그대로 옮겼다.
@@ -38,6 +39,7 @@ export default function App() {
         {/* 데이터 — 업로드된 데이터셋 기반 동적 대시보드 (외부 참조 없음, DB 기준) */}
         <Route path="/data/sources" element={<Datasets />} />
         <Route path="/data/raw" element={<Sources />} />
+        <Route path="/data/engine" element={<EngineInventory />} />
         <Route path="/data/dashboard/:id" element={<DatasetDashboard />} />
         <Route path="/data/dashboards" element={<Dashboards />} />
         <Route path="/data/vocab" element={<Vocab />} />

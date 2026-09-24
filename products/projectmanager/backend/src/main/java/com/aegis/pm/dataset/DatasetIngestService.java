@@ -34,7 +34,6 @@ public class DatasetIngestService {
     /** 헤더로 인정할 최소 컬럼 수 — 표지·제목 행이 헤더로 잡히는 것을 막는다 */
     private static final int MIN_HEADER_COLS = 2;
     /** 헤더를 찾을 때 훑어볼 상단 행 수 */
-    private static final int HEADER_SCAN_ROWS = 20;
     /** 컬럼명 길이 상한 — 셀 하나에 문단이 통째로 들어있는 시트가 실제로 있다(DB 컬럼 길이 초과 방지) */
     private static final int MAX_NAME = 180;
 
@@ -97,22 +96,29 @@ public class DatasetIngestService {
     private Parsed parse(Object[][] g) {
         if (g == null || g.length == 0) return null;
 
-        int headerRow = -1;
-        for (int r = 0; r < Math.min(g.length, HEADER_SCAN_ROWS); r++) {
-            int filled = 0;
-            for (Object c : g[r]) if (!Cells.str(c).isEmpty()) filled++;
-            // 헤더 후보: 값이 2칸 이상 + 바로 아래에도 값이 있는 행
-            if (filled >= MIN_HEADER_COLS && r + 1 < g.length && hasValue(g[r + 1])) {
-                headerRow = r;
-                break;
-            }
+        // 헤더 행은 통계로 고른다(엔진 HeaderDetector) — "2칸 이상 채워진 첫 행"은 제목 행·데이터 행을 헤더로 잡았다
+        // (실측: WBS_미완료·서버정보 시트의 첫 데이터 행이 헤더가 됨). 헤더가 없다고 판정되면 첫 행부터 데이터다.
+        List<List<String>> grid = new ArrayList<>(g.length);
+        int width = 0;
+        for (Object[] row : g) {
+            List<String> cells = new ArrayList<>(row.length);
+            for (Object c : row) cells.add(Cells.str(c));
+            grid.add(cells);
+            width = Math.max(width, row.length);
         }
-        if (headerRow < 0) return null;
+        com.aegis.pm.engine.HeaderDetector.Result hd = com.aegis.pm.engine.HeaderDetector.detect(grid);
+        int headerRow = hd.hasHeader() ? hd.row() : -1;
+        int firstData = hd.hasHeader() ? hd.row() + 1 : 0;
+        if (!hd.hasHeader()) {
+            int filledMax = 0;
+            for (Object[] row : g) { int f = 0; for (Object c : row) if (!Cells.str(c).isEmpty()) f++; filledMax = Math.max(filledMax, f); }
+            if (filledMax < MIN_HEADER_COLS) return null;
+        }
 
         // 중복·빈 헤더 보정 — 컬럼명을 키로 쓰므로 반드시 유일해야 한다
         List<String> headers = new ArrayList<>();
         LinkedHashSet<String> seen = new LinkedHashSet<>();
-        Object[] head = g[headerRow];
+        Object[] head = headerRow >= 0 ? g[headerRow] : new Object[width];
         for (int c = 0; c < head.length; c++) {
             String name = cut(Cells.str(head[c]).replaceAll("\\s+", " ").trim(), MAX_NAME);
             if (name.isEmpty()) name = "col" + (c + 1);
@@ -123,7 +129,7 @@ public class DatasetIngestService {
         }
 
         List<Map<String, String>> rows = new ArrayList<>();
-        for (int r = headerRow + 1; r < g.length; r++) {
+        for (int r = firstData; r < g.length; r++) {
             if (!hasValue(g[r])) continue;
             Map<String, String> row = new LinkedHashMap<>();
             for (int c = 0; c < headers.size(); c++) {
