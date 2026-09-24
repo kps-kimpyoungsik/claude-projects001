@@ -22,10 +22,22 @@ public class PiiMigrationService {
     private final JdbcTemplate jdbc;
     private final PiiVault vault;
     private final ObjectMapper json = new ObjectMapper();   // 저장용 — HTTP 공용 매퍼를 쓰면 마스크가 저장된다
+    /**
+     * 업로드 원본 보관 폴더(UploadService·SourceService 와 같은 상대 경로)와, 기존 평문을 지우지 않고 옮겨 두는 보류 폴더
+     * (개인키 사본 확인 전까지의 복구 경로 — 지침 G-9). <b>설정으로만 바꾼다</b> — 필드를 직접 바꾸면 @Transactional 프록시에만
+     * 반영되고 실제 객체는 기본값을 쓴다(실측 2026-09-24: 테스트가 실제 data/uploads 19개를 봉인한 사고).
+     */
+    private final java.nio.file.Path uploadsDir, sourcesDir, holdDir;
 
-    public PiiMigrationService(JdbcTemplate jdbc, PiiVault vault) {
+    public PiiMigrationService(JdbcTemplate jdbc, PiiVault vault,
+                               @org.springframework.beans.factory.annotation.Value("${pm.pii.uploads-dir:data/uploads}") String uploadsDir,
+                               @org.springframework.beans.factory.annotation.Value("${pm.pii.sources-dir:data/sources}") String sourcesDir,
+                               @org.springframework.beans.factory.annotation.Value("${pm.pii.hold-dir:data/_backup/pre-seal}") String holdDir) {
         this.jdbc = jdbc;
         this.vault = vault;
+        this.uploadsDir = java.nio.file.Paths.get(uploadsDir);
+        this.sourcesDir = java.nio.file.Paths.get(sourcesDir);
+        this.holdDir = java.nio.file.Paths.get(holdDir);
     }
 
     /** 남아 있는 평문 개수 — 전환 전후 비교·상태 화면용 */
@@ -82,6 +94,7 @@ public class PiiMigrationService {
             changed.put(c.table() + "." + c.column() + "(본문)", n);
         }
         changed.put("dataset_row", dsFirst + migrateDatasets());
+        changed.put("sealed_files", sealFiles(uploadsDir, "upload_batch") + sealFiles(sourcesDir, "source_doc"));
         Map<String, Object> out = new LinkedHashMap<>(status());
         out.put("changed", changed);
         return out;
@@ -135,6 +148,25 @@ public class PiiMigrationService {
             }
         }
         return rows;
+    }
+
+    /** 폴더의 평문 원본을 봉인하고, 그 경로를 가리키던 이력 행(stored_path)을 봉인 파일로 바꾼다. 멱등 */
+    private int sealFiles(java.nio.file.Path dir, String table) {
+        if (!java.nio.file.Files.isDirectory(dir)) return 0;
+        int n = 0;
+        try (var files = java.nio.file.Files.list(dir)) {
+            for (java.nio.file.Path p : files.filter(java.nio.file.Files::isRegularFile)
+                    .filter(p -> !p.getFileName().toString().endsWith(".sealed")
+                            && !p.getFileName().toString().endsWith(".sealing")).toList()) {
+                String before = p.toAbsolutePath().toString();
+                java.nio.file.Path s = vault.sealStored(p, holdDir.resolve(dir.getFileName()));
+                jdbc.update("UPDATE " + table + " SET stored_path = ? WHERE stored_path = ?", s.toAbsolutePath().toString(), before);
+                n++;
+            }
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("원본 봉인 실패: " + dir, e);
+        }
+        return n;
     }
 
     private Map<String, String> read(String payload) {

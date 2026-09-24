@@ -36,7 +36,8 @@ public final class PiiRegistry {
             new Column("ia_screen", "plan_note", PERSON),
             new Column("wbs_task", "name", PERSON), new Column("wbs_task", "path", PERSON),
             new Column("wbs_task", "big", PERSON), new Column("wbs_task", "mid", PERSON),
-            new Column("wbs_task", "small", PERSON), new Column("wbs_task", "note", PERSON));
+            new Column("wbs_task", "small", PERSON), new Column("wbs_task", "note", PERSON),
+            new Column("source_fragment", "text", PERSON));   // 원본 자료 조각 — 2026-09-24 누락 발견
 
     /** 업로드 시트 헤더 → P2 종류. 이름이 곧 분류 근거라 오탐보다 누락이 더 위험하다 — 넓게 잡는다 */
     private static final List<Object[]> HEADERS = List.of(

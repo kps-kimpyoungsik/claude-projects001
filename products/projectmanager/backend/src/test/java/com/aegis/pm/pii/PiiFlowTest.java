@@ -57,6 +57,10 @@ class PiiFlowTest {
         r.add("pm.pii.private-key", () -> DIR.resolve("priv.pem").toString());
         r.add("pm.pii.index-key", PiiCrypto::newIndexKey);
         r.add("pm.pii.reveal", () -> "false");
+        // 전환이 원본을 봉인·이동한다 — 실제 data/ 를 절대 건드리지 않게 임시 폴더로 (WRG-007, 2026-09-24 사고)
+        r.add("pm.pii.uploads-dir", () -> DIR.resolve("uploads").toString());
+        r.add("pm.pii.sources-dir", () -> DIR.resolve("sources").toString());
+        r.add("pm.pii.hold-dir", () -> DIR.resolve("hold").toString());
     }
 
     @Autowired DefectService defects;
@@ -66,8 +70,24 @@ class PiiFlowTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper http;   // HTTP 응답과 같은 매퍼
 
+    /** 안전 검사 — 이 테스트가 실제 업로드 폴더에 봉인 파일·보류 폴더를 만들면 실패 (2026-09-24 사고 재발 방지) */
+    @org.junit.jupiter.api.AfterAll
+    static void realDataUntouched() throws Exception {
+        Path real = java.nio.file.Paths.get("data", "uploads");
+        if (Files.isDirectory(real)) try (var s = Files.list(real)) {
+            assertEquals(0, s.filter(p -> p.toString().endsWith(".sealed")).count(), "테스트가 실제 data/uploads 를 봉인했다");
+        }
+        assertFalse(Files.exists(java.nio.file.Paths.get("data", "_backup", "pre-seal")), "테스트가 실제 보류 폴더를 만들었다");
+    }
+
     @BeforeEach
-    void reset() {
+    void reset() throws Exception {
+        for (String d : List.of("uploads", "hold")) {       // 테스트마다 빈 폴더
+            Path p = DIR.resolve(d);
+            if (Files.exists(p)) try (var w = Files.walk(p)) {
+                w.sorted(java.util.Comparator.reverseOrder()).forEach(x -> x.toFile().delete());
+            }
+        }
         for (String t : List.of("defect", "wbs_task", "dataset_row", "dataset_column", "dataset", "pii_vault")) {
             jdbc.update("DELETE FROM " + t);
         }
@@ -202,6 +222,48 @@ class PiiFlowTest {
                 "SELECT COUNT(*) FROM defect WHERE content LIKE '%이영희%' OR content LIKE '%박민수%'", Integer.class));
         assertEquals(0, ((Map<?, ?>) migration.migrate().get("changed")).values().stream()
                 .filter(n -> ((Integer) n) != 0).count(), "멱등");
+    }
+
+    @Test
+    void 처리된_업로드_원본은_봉인되고_평문은_지워진다() throws Exception {
+        Path dir = Files.createTempDirectory("pii-up");
+        Path plain = dir.resolve("UP-1_홍길동_명단.xlsx");
+        Files.write(plain, "PK 원본 바이트".getBytes());
+        byte[] orig = Files.readAllBytes(plain);
+
+        Path sealed = vault.sealStored(plain, null);
+        assertFalse(Files.exists(plain), "평문이 남으면 안 된다");
+        assertTrue(sealed.toString().endsWith(".sealed") && PiiCrypto.isSealedFile(sealed));
+        var out = new java.io.ByteArrayOutputStream();
+        try (var in = Files.newInputStream(sealed)) { PiiCrypto.openFile(KP.getPrivate(), in, out); }
+        org.junit.jupiter.api.Assertions.assertArrayEquals(orig, out.toByteArray());
+        assertEquals(sealed, vault.sealStored(sealed, null), "이미 봉인된 파일은 그대로");
+    }
+
+    @Test
+    void 전환은_기존_원본을_봉인하고_평문은_보류_폴더로_옮기며_이력_경로를_바꾼다() throws Exception {
+        Path root = DIR;
+        Path uploads = Files.createDirectories(root.resolve("uploads"));
+        Path plain = uploads.resolve("UP-9_명단.xlsx");
+        Files.writeString(plain, "원본");
+        jdbc.update("DELETE FROM upload_batch");
+        jdbc.update("INSERT INTO upload_batch (batch_id, kind, file_name, stored_path, uploaded_at) VALUES ('UP-9','dataset','명단.xlsx',?,'2026-09-24')",
+                plain.toAbsolutePath().toString());
+        jdbc.update("INSERT INTO source_fragment (frag_id, doc_id, seq, locator, kind, text) VALUES ('X#1','X',1,'txt:L1','text','홍길동 검토')");
+        defects.create(Map.of("defectId", "D-1", "owner", "홍길동"));
+        try {
+            Map<?, ?> changed = (Map<?, ?>) migration.migrate().get("changed");
+            assertEquals(1, changed.get("sealed_files"));
+            assertFalse(Files.exists(plain));
+            assertTrue(Files.exists(uploads.resolve("UP-9_명단.xlsx.sealed")));
+            assertTrue(Files.exists(root.resolve("hold").resolve("uploads").resolve("UP-9_명단.xlsx")), "평문은 보류 폴더로");
+            assertTrue(jdbc.queryForObject("SELECT stored_path FROM upload_batch WHERE batch_id='UP-9'", String.class).endsWith(".sealed"));
+            assertFalse(jdbc.queryForObject("SELECT text FROM source_fragment WHERE frag_id='X#1'", String.class).contains("홍길동"),
+                    "원본 자료 조각 본문도 치환한다");
+            assertEquals(0, ((Map<?, ?>) migration.migrate().get("changed")).get("sealed_files"), "멱등");
+        } finally {
+            jdbc.update("DELETE FROM source_fragment");
+        }
     }
 
     @Test

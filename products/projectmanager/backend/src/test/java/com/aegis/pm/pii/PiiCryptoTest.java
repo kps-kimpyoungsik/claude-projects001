@@ -43,6 +43,22 @@ class PiiCryptoTest {
     }
 
     @Test
+    void 파일_봉인은_스트리밍으로_왕복되고_위변조를_거부한다() throws Exception {
+        byte[] plain = new byte[300_000];
+        new java.util.Random(7).nextBytes(plain);
+        var sealed = new java.io.ByteArrayOutputStream();
+        PiiCrypto.sealFile(KP.getPublic(), new java.io.ByteArrayInputStream(plain), sealed);
+        byte[] s = sealed.toByteArray();
+        var opened = new java.io.ByteArrayOutputStream();
+        PiiCrypto.openFile(KP.getPrivate(), new java.io.ByteArrayInputStream(s), opened);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(plain, opened.toByteArray());
+
+        s[s.length - 100] ^= 1;
+        assertThrows(IllegalStateException.class, () -> PiiCrypto.openFile(KP.getPrivate(),
+                new java.io.ByteArrayInputStream(s), new java.io.ByteArrayOutputStream()), "손상된 파일을 원본인 척 돌려주면 안 된다");
+    }
+
+    @Test
     void 토큰은_같은_사람이면_같고_색인키가_다르면_다르다() {
         byte[] k1 = "0123456789abcdef0123456789abcdef".getBytes();
         byte[] k2 = "fedcba9876543210fedcba9876543210".getBytes();

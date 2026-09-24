@@ -42,9 +42,11 @@ public class SourceService {
     private static final int BATCH = 1000;
 
     private final JdbcTemplate jdbc;
+    private final com.aegis.pm.pii.PiiVault pii;
 
-    public SourceService(JdbcTemplate jdbc) {
+    public SourceService(JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii) {
         this.jdbc = jdbc;
+        this.pii = pii;
     }
 
     @Transactional
@@ -92,11 +94,15 @@ public class SourceService {
             Extractor.extract(stored, format, f -> {
                 seq[0]++;
                 buf.add(new Object[] { docId + "#" + seq[0], docId, seq[0], f.locator(), f.kind(),
-                        f.text(), f.confidence() });
+                        pii.scrub(f.text()), f.confidence() });   // 조각 본문 속 금고 인물 → 토큰 (지침 G-2)
                 if (buf.size() == BATCH) flush(buf);
             });
             flush(buf);
             jdbc.update("UPDATE source_doc SET frag_count = ? WHERE doc_id = ?", seq[0], docId);
+            Path sealedPath = pii.sealStored(stored, null);   // 원본은 추출 후 다시 읽지 않는다 — 봉인 (pii 설계서 §8)
+            if (!sealedPath.equals(stored)) {
+                jdbc.update("UPDATE source_doc SET stored_path = ? WHERE doc_id = ?", sealedPath.toAbsolutePath().toString(), docId);
+            }
             recordUsage(caseId, "source_doc", docId, "input", now);
             return result(caseId, docId, name, format, seq[0], false);
         } catch (Exception e) {

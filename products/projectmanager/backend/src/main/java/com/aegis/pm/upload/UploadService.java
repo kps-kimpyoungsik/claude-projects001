@@ -45,9 +45,12 @@ public class UploadService {
     private final IaImportService iaImporter;
     private final DatasetIngestService datasetIngest;
     private final JdbcTemplate jdbc;
+    private final com.aegis.pm.pii.PiiVault pii;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(UploadService.class);
 
     public UploadService(WbsImportService wbsImporter, IaImportService iaImporter,
-                         DatasetIngestService datasetIngest, JdbcTemplate jdbc) {
+                         DatasetIngestService datasetIngest, JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii) {
+        this.pii = pii;
         this.wbsImporter = wbsImporter;
         this.iaImporter = iaImporter;
         this.datasetIngest = datasetIngest;
@@ -98,6 +101,18 @@ public class UploadService {
         for (Routed r : routed) {
             if (r.target().startsWith("core:")) usage(batchId, "core", r.target().substring(5));
         }
+        // 원본은 적재 후 다시 읽지 않는다 — 봉인하고 평문을 지운다 (pii 설계서 §8 2단계, 지침 G-9).
+        // 봉인이 실패해도 적재는 되돌리지 않는다(이미 성공한 반영을 잃는 쪽이 더 나쁘다) — 경고만 남긴다.
+        boolean sealed = false;
+        try {
+            Path s = pii.sealStored(stored, null);
+            if (!s.equals(stored)) {
+                jdbc.update("UPDATE upload_batch SET stored_path = ? WHERE batch_id = ?", s.toAbsolutePath().toString(), batchId);
+                sealed = true;
+            }
+        } catch (Exception e) {
+            log.warn("[개인정보] 업로드 원본 봉인 실패 batch={} — 평문 보관 중 ({})", batchId, e.getClass().getSimpleName());
+        }
 
         List<Map<String, Object>> sheets = new ArrayList<>();
         for (Routed r : routed) {
@@ -118,6 +133,7 @@ public class UploadService {
         out.put("kind", kind);
         out.put("fileName", name);
         out.put("uploadedAt", now);
+        out.put("sealed", sealed);
         out.put("sheets", sheets);
         out.put("added", added);
         out.put("updated", updated);

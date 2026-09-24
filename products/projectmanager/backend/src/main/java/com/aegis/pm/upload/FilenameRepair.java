@@ -139,10 +139,11 @@ public class FilenameRepair {
     }
 
     private void collect(File dir, boolean stripBatchPrefix, Set<String> out) {
-        File[] fs = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".xlsx") && !n.startsWith("~$"));
+        File[] fs = dir.listFiles((d, n) -> (n.toLowerCase().endsWith(".xlsx") || n.toLowerCase().endsWith(".xlsx.sealed"))
+                && !n.startsWith("~$"));
         if (fs == null) return;
         for (File f : fs) {
-            String n = f.getName();
+            String n = f.getName().replaceFirst("(?i)\\.sealed$", "");   // 봉인된 원본도 이름 대조 후보 (pii 설계서 §8)
             if (stripBatchPrefix) n = BATCH_PREFIX.matcher(n).replaceFirst("");
             if (!broken(n)) out.add(n);
         }

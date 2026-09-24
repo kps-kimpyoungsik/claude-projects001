@@ -212,6 +212,51 @@ public class PiiVault {
         });
     }
 
+    /**
+     * 처리가 끝난 업로드 원본을 봉인한다 — {@code <원본>.sealed}(PiiCrypto 파일 형식)를 쓰고 평문을 지운다.
+     * 원본은 적재 후 다시 읽는 곳이 없어서 기능 영향이 없다(pii 설계서 §8 2단계). 개인키가 있으면 복원해 SHA-256 이
+     * 같은지 확인한 뒤에만 평문을 지운다. 비활성이면 그대로 둔다.
+     *
+     * @param keepPlainIn null 이면 평문 삭제, 아니면 그 폴더로 옮긴다(기존 파일 전환 — 개인키 사본 확인 전 보류용)
+     * @return 봉인 파일 경로 (비활성이면 원래 경로)
+     */
+    public Path sealStored(Path plain, Path keepPlainIn) throws java.io.IOException {
+        if (!enabled() || plain == null || !Files.exists(plain) || plain.toString().endsWith(".sealed")) return plain;
+        Path sealed = plain.resolveSibling(plain.getFileName() + ".sealed");
+        Path tmp = plain.resolveSibling(plain.getFileName() + ".sealing");
+        try (var in = Files.newInputStream(plain); var out = Files.newOutputStream(tmp)) {
+            PiiCrypto.sealFile(publicKey, in, out);
+        }
+        if (privateKey != null) {
+            java.security.MessageDigest a = sha256(), b = sha256();
+            try (var in = new java.security.DigestInputStream(Files.newInputStream(plain), a)) { in.transferTo(java.io.OutputStream.nullOutputStream()); }
+            try (var in = Files.newInputStream(tmp);
+                 var out = new java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(), b)) {
+                PiiCrypto.openFile(privateKey, in, out);
+            }
+            if (!java.util.Arrays.equals(a.digest(), b.digest())) {
+                Files.deleteIfExists(tmp);
+                throw new IllegalStateException("봉인 검증 실패 — 평문을 지우지 않았습니다: " + plain.getFileName());
+            }
+        }
+        Files.move(tmp, sealed, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        if (keepPlainIn == null) {
+            Files.delete(plain);
+        } else {
+            Files.createDirectories(keepPlainIn);
+            Files.move(plain, keepPlainIn.resolve(plain.getFileName()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        return sealed;
+    }
+
+    private static java.security.MessageDigest sha256() {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** 전환 전 왕복 시험 — 개인키가 공개키와 짝인지 (설계서 §7 안전장치 2) */
     public void verifyRoundTrip() {
         if (!enabled()) throw new IllegalStateException("개인정보 보호 비활성 — PM_PII_INDEX_KEY 를 설정하세요");

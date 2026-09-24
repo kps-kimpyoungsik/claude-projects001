@@ -40,8 +40,9 @@ import javax.crypto.spec.SecretKeySpec;
  * <pre>
  *   java PiiCrypto.java keygen  &lt;디렉터리&gt;              키쌍 생성 (pii_public.pem · pii_private.pem)
  *   java PiiCrypto.java indexkey                        색인키 1개 출력 (.env 의 PM_PII_INDEX_KEY 용)
- *   java PiiCrypto.java seal    &lt;공개키&gt; &lt;원문&gt; &lt;출력&gt;   비공개 문서 봉인 (지침 G-12)
- *   java PiiCrypto.java unseal  &lt;개인키&gt; &lt;봉인&gt; &lt;출력&gt;   복원
+ *   java PiiCrypto.java seal     &lt;공개키&gt; &lt;원문&gt; &lt;출력&gt;   비공개 문서 봉인 — 텍스트(git 친화) (지침 G-12)
+ *   java PiiCrypto.java sealfile &lt;공개키&gt; &lt;원문&gt; &lt;출력&gt;   큰 파일 봉인 — 바이너리 스트림
+ *   java PiiCrypto.java unseal   &lt;개인키&gt; &lt;봉인&gt; &lt;출력&gt;   복원 (두 형식 자동 판별)
  * </pre>
  */
 public final class PiiCrypto {
@@ -92,6 +93,76 @@ public final class PiiCrypto {
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("복호화 실패 — 키가 다르거나 암호문이 손상됐습니다", e);
         }
+    }
+
+    // ── 파일 봉인 (스트리밍) ──────────────────────────────────────
+    //  "PIIF1" + u16 감싼키길이 + RSA-OAEP(AES키) + IV(12) + AES-256-GCM 스트림(끝 16바이트 태그)
+    //  문자열 봉투(base64)로 30MB 파일을 싸면 힙에 원문·암호문·base64·UTF-16 이 동시에 올라간다 — 파일은 흘려서 싼다.
+
+    static final byte[] FILE_MAGIC = "PIIF1".getBytes(StandardCharsets.US_ASCII);
+
+    public static void sealFile(PublicKey pub, java.io.InputStream in, java.io.OutputStream out) throws java.io.IOException {
+        try {
+            KeyGenerator kg = KeyGenerator.getInstance("AES");
+            kg.init(256);
+            SecretKey aes = kg.generateKey();
+            byte[] iv = new byte[12];
+            RNG.nextBytes(iv);
+            Cipher rsa = Cipher.getInstance(RSA);
+            rsa.init(Cipher.ENCRYPT_MODE, pub, OAEP);
+            byte[] wrapped = rsa.doFinal(aes.getEncoded());
+            Cipher gcm = Cipher.getInstance("AES/GCM/NoPadding");
+            gcm.init(Cipher.ENCRYPT_MODE, aes, new GCMParameterSpec(128, iv));
+            java.io.DataOutputStream d = new java.io.DataOutputStream(out);
+            d.write(FILE_MAGIC);
+            d.writeShort(wrapped.length);
+            d.write(wrapped);
+            d.write(iv);
+            d.flush();
+            try (javax.crypto.CipherOutputStream c = new javax.crypto.CipherOutputStream(new NoClose(out), gcm)) {
+                in.transferTo(c);
+            }
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("파일 암호화 실패", e);
+        }
+    }
+
+    /** 위변조되면 예외 — GCM 태그는 스트림 끝에서 검사된다. 출력은 임시 파일로 받고 성공 후에만 옮길 것 */
+    public static void openFile(PrivateKey priv, java.io.InputStream in, java.io.OutputStream out) throws java.io.IOException {
+        java.io.DataInputStream d = new java.io.DataInputStream(in);
+        byte[] magic = d.readNBytes(FILE_MAGIC.length);
+        if (!java.util.Arrays.equals(magic, FILE_MAGIC)) throw new IllegalArgumentException("봉인 파일 형식이 아닙니다");
+        try {
+            byte[] wrapped = d.readNBytes(d.readUnsignedShort());
+            byte[] iv = d.readNBytes(12);
+            Cipher rsa = Cipher.getInstance(RSA);
+            rsa.init(Cipher.DECRYPT_MODE, priv, OAEP);
+            SecretKey aes = new SecretKeySpec(rsa.doFinal(wrapped), "AES");
+            Cipher gcm = Cipher.getInstance("AES/GCM/NoPadding");
+            gcm.init(Cipher.DECRYPT_MODE, aes, new GCMParameterSpec(128, iv));
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = d.read(buf)) > 0) {
+                byte[] o = gcm.update(buf, 0, n);
+                if (o != null) out.write(o);
+            }
+            out.write(gcm.doFinal());
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("파일 복호화 실패 — 키가 다르거나 파일이 손상됐습니다", e);
+        }
+    }
+
+    public static boolean isSealedFile(Path p) throws java.io.IOException {
+        try (var in = Files.newInputStream(p)) {
+            return java.util.Arrays.equals(in.readNBytes(FILE_MAGIC.length), FILE_MAGIC);
+        }
+    }
+
+    /** CipherOutputStream.close() 가 바깥 스트림까지 닫지 않게 */
+    private static final class NoClose extends java.io.FilterOutputStream {
+        NoClose(java.io.OutputStream o) { super(o); }
+        @Override public void write(byte[] b, int off, int len) throws java.io.IOException { out.write(b, off, len); }
+        @Override public void close() throws java.io.IOException { flush(); }
     }
 
     public static String seal(PublicKey pub, String plain) {
@@ -198,12 +269,25 @@ public final class PiiCrypto {
                 Files.writeString(Path.of(a[3]), seal(pub, Files.readAllBytes(Path.of(a[2]))) + "\n");
                 System.out.println("봉인: " + a[3]);
             }
+            case "sealfile" -> {
+                PublicKey pub = readPublic(Files.readString(Path.of(a[1])));
+                try (var in = Files.newInputStream(Path.of(a[2])); var out = Files.newOutputStream(Path.of(a[3]))) {
+                    sealFile(pub, in, out);
+                }
+                System.out.println("봉인: " + a[3]);
+            }
             case "unseal" -> {
                 PrivateKey priv = readPrivate(Files.readString(Path.of(a[1])));
-                Files.write(Path.of(a[3]), open(priv, Files.readString(Path.of(a[2])).trim()));
+                if (isSealedFile(Path.of(a[2]))) {
+                    try (var in = Files.newInputStream(Path.of(a[2])); var out = Files.newOutputStream(Path.of(a[3]))) {
+                        openFile(priv, in, out);
+                    }
+                } else {
+                    Files.write(Path.of(a[3]), open(priv, Files.readString(Path.of(a[2])).trim()));
+                }
                 System.out.println("복원: " + a[3]);
             }
-            default -> System.out.println("사용법: keygen <dir> | indexkey | seal <pub.pem> <in> <out> | unseal <priv.pem> <in> <out>");
+            default -> System.out.println("사용법: keygen <dir> | indexkey | seal|sealfile <pub.pem> <in> <out> | unseal <priv.pem> <in> <out>");
         }
     }
 }

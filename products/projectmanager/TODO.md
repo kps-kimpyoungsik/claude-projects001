@@ -58,7 +58,7 @@
 
 ## 2026-09-13 처리 결과 (DDS Phase 0 — 성능 선행 정리)
 
-`plans/_works/_opens/dataset_dynamic_system/` 설계의 Phase 0. 뷰 질의가 같은 조회 경로를 쓰게 되므로 먼저 처리했다.
+`plans/_opens/dataset_dynamic_system/` 설계의 Phase 0. 뷰 질의가 같은 조회 경로를 쓰게 되므로 먼저 처리했다.
 
 **해결**
 - **P1 #6 일부** — 미리보기 조회가 전 행을 올린 뒤 잘랐다(`DashboardService.rows()` → `datasets.rows()` 전량).
@@ -82,7 +82,7 @@
 
 ## 2026-09-14 처리 결과 (DDS Phase 1 — 어휘 사전)
 
-`plans/_works/_opens/dataset_dynamic_system/05_어휘사전_설계.md` 구현. 기존 코드 회귀 0
+`plans/_opens/dataset_dynamic_system/05_어휘사전_설계.md` 구현. 기존 코드 회귀 0
 (추가된 것은 새 테이블 4개와 `/api/dds/vocab` 뿐, `dataset` 3형제·업로드·대시보드 경로 무변경).
 
 **해결**
@@ -423,14 +423,14 @@ TODO 에 `DB에서 수정한 IA 값이 있으면 함께 사라진다` 고 적혀
 **테스트**: 68 → **88건** (메모리 가드 6 · 매직넘버/인코딩 7 · 복원 7), 회귀 0.
 
 ### 설계 문서 (별도 트랙)
-`plans/_works/_opens/universal_structuring_system/` — 기준(예시·가이드·템플릿·포맷) 기반
+`plans/_opens/universal_structuring_system/` — 기준(예시·가이드·템플릿·포맷) 기반
 범용 정형화 엔진(USS). **`01_단계지도.md` 가 단계 계획의 유일한 정본** — DDS P3~P7 · USS U0~U10 ·
 그래프 G1~G7 이 겹쳐 78인일로 오계상되던 것을 **66 → 착수분 9인일**로 정리(G3=DDS P5 동일 작업).
 
 ### 남은 것 (다음 세션)
 - **기준 문서 실물 1건 미확보 — 5턴 연속 차단.** U2(기준→표준 어댑터)·검증 5인일이 여기 막혀 있다.
-- ✅ 2026-09-23 **U1 추출기 + G1 `case_usage` 완료** — `POST /api/sources`(xlsx·docx·pptx·txt/md/csv → 조각+locator, 이미지·음성·pdf 원본 수용). `plans/_works/uss_u1_extract_g1/`. U1은 U2에 의존하지 않는다는 정정: `01_단계지도.md` §7.
-- ✅ 2026-09-23 **U5-min 측정 루프 + 원본 자료 화면(`/data/raw`)** — 교정 화면 [맞음] 버튼·측정 띠·스냅샷 회귀 감지. 반례 검증으로 결함 2(pptx 그룹 도형·docx 중첩 표 유실) + OOM 1(50k행 xlsx) 수정. `plans/_works/uss_u5min_metric/`.
+- ✅ 2026-09-23 **U1 추출기 + G1 `case_usage` 완료** — `POST /api/sources`(xlsx·docx·pptx·txt/md/csv → 조각+locator, 이미지·음성·pdf 원본 수용). `plans/_dones/uss_u1_extract_g1/`. U1은 U2에 의존하지 않는다는 정정: `01_단계지도.md` §7.
+- ✅ 2026-09-23 **U5-min 측정 루프 + 원본 자료 화면(`/data/raw`)** — 교정 화면 [맞음] 버튼·측정 띠·스냅샷 회귀 감지. 반례 검증으로 결함 2(pptx 그룹 도형·docx 중첩 표 유실) + OOM 1(50k행 xlsx) 수정. `plans/_dones/uss_u5min_metric/`.
 - ✅ 2026-09-24 `dataset_role`→`dataset_canon` rename 완료(설계 06·01·02, 컬럼 `role`→`canon`). 초기 커밋 `e4dab58` 완료(P0 #1 — `.gitignore` 줄끝 주석으로 `backend/data/`·`.env` 무력화돼 있던 것 교정 포함). 실제 PostgreSQL 검증은 원격 공유 DB라 승인 필요.
 - KH 등재 대기 4건: ①회수기 래퍼만 종료·자식 고아 생존(**3회 재현**) ②ASCII 골격 복원
   ③전송 경로 인코딩(HTTP 200 ≠ 인코딩 정상) ④VPN 어댑터 Private 프로필 방화벽.
@@ -457,4 +457,6 @@ TODO 에 `DB에서 수정한 IA 값이 있으면 함께 사라진다` 고 적혀
 - ⏸ **평문 DB 백업 폐기 보류** — `data/_backup/` 3개(`…20260919_*` 2개 + `…20260924_154601.pre-pii`). 개인키를 잃으면 원문 복구 경로가 이 백업뿐이다. **개인키 오프라인 사본 확보가 확인되면** 폐기(G-9).
 - 전환 중 발견·수정: 재실행 시 역할어·복합값 122행을 같은 값으로 다시 써서 "멱등 아님"으로 보고하던 계수 결함(데이터 변화는 0) → 값이 같으면 건너뜀 + 테스트.
 - 2자 이름은 자유 텍스트에서 찾지 않음(일반 단어와 충돌). 금고에 없는 사람이 본문에만 나오면 못 찾음.
-- 업로드 원본 xlsx(`data/uploads/`)·엑셀 원본 파일 자체는 평문 — 2단계(원본 보관 정책과 함께).
+- ✅ 2026-09-24 업로드 원본 봉인 — 새 업로드·원본 자료는 적재 후 `.sealed`(RSA+AES-GCM 스트림), 기존 19개 봉인·실제 개인키 독립 복원 19/19 일치. 원본 자료 조각 본문 치환 추가. `plans/_dones/pii_file_seal/`.
+  평문 19개는 `data/_backup/pre-seal/uploads/` 에 **보류**(DB 백업과 함께 개인키 사본 확인 후 폐기). 설정 엑셀 원본 3개는 사용자 편집 파일이라 제외.
+- ⚠ 사고(손실 0): 테스트가 @Transactional 프록시 필드를 바꿔 실제 `data/uploads` 19개를 테스트 키로 봉인 → 보류 평문 원위치·잘못된 봉인 삭제. 폴더를 설정값으로만 받게 하고 `@AfterAll` 안전 검사 추가.
