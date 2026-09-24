@@ -36,9 +36,12 @@ public class WbsImportService {
     private final WbsProperties props;
     private final JdbcTemplate jdbc;
     private final DatasetWriter datasets;
+    private final com.aegis.pm.pii.PiiVault pii;
 
     public WbsImportService(WbsExcelReader reader, SheetTableReader tables, ExcelSource source,
-                            WbsProperties props, JdbcTemplate jdbc, DatasetWriter datasets) {
+                            WbsProperties props, JdbcTemplate jdbc, DatasetWriter datasets,
+                            com.aegis.pm.pii.PiiVault pii) {
+        this.pii = pii;
         this.reader = reader;
         this.tables = tables;
         this.source = source;
@@ -60,12 +63,15 @@ public class WbsImportService {
         jdbc.update("DELETE FROM wbs_task");
         jdbc.update("DELETE FROM wbs_meta");
 
+        // 담당자를 먼저 금고에 올린다 — 그래야 앞 행 작업명에 나온 이름도 찾아 바꾼다 (pii 설계서 §6)
+        for (Task t : m.tasks()) pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, t.owner());
         List<Object[]> batch = new ArrayList<>();
         for (Task t : m.tasks()) {
             batch.add(new Object[]{
-                    t.seq(), t.no(), t.dep(), t.name(), t.path(), t.big(), t.mid(), t.small(),
-                    t.pStart(), t.pEnd(), t.owner(), t.part(), t.pProg(),
-                    t.aStart(), t.aEnd(), t.aProg(), t.weight(), t.note(),
+                    t.seq(), t.no(), t.dep(), pii.scrub(t.name()), pii.scrub(t.path()),
+                    pii.scrub(t.big()), pii.scrub(t.mid()), pii.scrub(t.small()),
+                    t.pStart(), t.pEnd(), pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, t.owner()), t.part(), t.pProg(),
+                    t.aStart(), t.aEnd(), t.aProg(), t.weight(), pii.scrub(t.note()),
                     t.week(), t.startWeek(), t.endWeek(), t.isLeaf(), t.status()});
         }
         jdbc.batchUpdate("""

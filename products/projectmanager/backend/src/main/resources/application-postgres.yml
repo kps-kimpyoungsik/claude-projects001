@@ -1,4 +1,4 @@
-# PostgreSQL 프로파일 — 원격 컨테이너 project-pm-manager-db (<db-host>:5434)
+# PostgreSQL 프로파일 — 원격 컨테이너. 접속 정보는 backend/.env 의 PM_DB_* (봉인본: plans/INFRA.sealed)
 #   실행: run-postgres.cmd  (또는 .env 를 환경변수로 올린 뒤 --spring.profiles.active=postgres)
 #   비밀번호는 이 파일에 두지 않는다 — .env(git 제외)에서 환경변수로 주입한다.
 spring:

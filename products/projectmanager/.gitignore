@@ -9,3 +9,7 @@ frontend/dist/
 backend/.env
 
 backend/boot.log
+# 개인정보 보호 (plans/_opens/pii_protection 지침 G-5·G-12) — 개인키·비공개 원문은 커밋하지 않는다
+*.pem
+!backend/src/main/resources/pii/pii_public.pem
+**/_private/

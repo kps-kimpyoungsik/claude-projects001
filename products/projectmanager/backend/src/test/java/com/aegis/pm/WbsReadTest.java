@@ -36,7 +36,8 @@ class WbsReadTest {
         WbsProperties props = props();
         ExcelSource source = new ExcelSource(props);
         return new WbsService(new ExcelWbsRepository(
-                new WbsExcelReader(source, props), new SheetTableReader(source)));
+                new WbsExcelReader(source, props), new SheetTableReader(source),
+                new com.aegis.pm.pii.PiiVault(null, "", "", "", false)));   // 개인정보 보호 비활성 — 계산만 검증
     }
 
     @Test

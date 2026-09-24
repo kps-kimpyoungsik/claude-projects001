@@ -134,32 +134,24 @@ curl -X POST http://localhost:8080/api/admin/import
 
 ### 운영 PostgreSQL (원격 컨테이너) — 구성 완료
 
-원격 서버의 `project-pm-manager-db` 컨테이너에 연결해 적재까지 끝나 있다.
+접속 정보(호스트·포트·계정·SSH)는 **공개 저장소에 두지 않는다**(`plans/_opens/pii_protection/01_지침.md` G-11·G-12).
+봉인본 `plans/INFRA.sealed` 를 개인키로 복원해서 본다:
 
-| 항목 | 값 |
-|---|---|
-| 호스트 | `<db-host>` (tailnet `<tailnet-host>`, 통칭 "127번 서버") |
-| 포트 | `5434` (컨테이너 내부 5432 매핑) |
-| 컨테이너 | `project-pm-manager-db` — PostgreSQL 15.18 |
-| DB / 계정 | `<db-name>` / `<db-user>` |
-| 비밀번호 | `backend/.env` (git 제외). 원본은 컨테이너 env `POSTGRES_PASSWORD` |
-| SSH | `ssh <db-host>` — `~/.ssh/config`에 `User user` + `IdentityFile ~/.ssh/<ssh-key>` 등록됨 |
+```bash
+java backend/src/main/java/com/aegis/pm/pii/PiiCrypto.java unseal <개인키.pem> plans/INFRA.sealed plans/_private/INFRA.md
+```
+
+값은 `backend/.env`(git 제외)의 `PM_DB_*` 에 넣는다.
 
 ```bash
 cd backend
-cp .env.example .env      # PM_DB_PASSWORD 채우기
+cp .env.example .env      # PM_DB_* 채우기
 ./run-postgres.sh         # Windows: run-postgres.cmd
 ```
 
 `run-postgres` 스크립트가 `.env`를 환경변수로 올린 뒤 `postgres` 프로파일로 기동한다
 (비밀번호가 명령행·설정파일에 남지 않는다). 프로파일이 `wbs.source=db`를 켜므로
 DB가 비어 있으면 기동 시 엑셀이 1회 자동 적재된다.
-
-원격 DB 직접 확인:
-
-```bash
-ssh <db-host> 'docker exec project-pm-manager-db psql -U <db-user> -d <db-name> -c "\dt"'
-```
 
 **다른 PostgreSQL로 옮길 때**: `.env`의 5개 값만 바꾸면 된다. `schema.sql`은 H2/PostgreSQL
 공통 문법이라 그대로 쓰고, 코드 변경은 없다.

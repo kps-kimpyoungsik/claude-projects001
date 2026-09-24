@@ -32,10 +32,12 @@ public class IaImportService {
 
     private final UnitTestProperties props;
     private final JdbcTemplate jdbc;
+    private final com.aegis.pm.pii.PiiVault pii;
 
-    public IaImportService(UnitTestProperties props, JdbcTemplate jdbc) {
+    public IaImportService(UnitTestProperties props, JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii) {
         this.props = props;
         this.jdbc = jdbc;
+        this.pii = pii;
     }
 
     @Transactional
@@ -95,10 +97,10 @@ public class IaImportService {
                     seq++, sid, d1,
                     Cells.str(Cells.at(row, cD2)), Cells.str(Cells.at(row, cD3)),
                     Cells.str(Cells.at(row, cD4)), Cells.str(Cells.at(row, cD5)),
-                    Cells.str(Cells.at(row, cType)), Cells.str(Cells.at(row, cNote)),
-                    Cells.str(Cells.at(row, cOwner)), Cells.str(Cells.at(row, cStatus)),
-                    Cells.str(Cells.at(row, cRemark)), Cells.str(Cells.at(row, cPlan)),
-                    Cells.str(Cells.at(row, cPnote)), now});
+                    Cells.str(Cells.at(row, cType)), pii.scrub(Cells.str(Cells.at(row, cNote))),
+                    pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, Cells.str(Cells.at(row, cOwner))), Cells.str(Cells.at(row, cStatus)),
+                    pii.scrub(Cells.str(Cells.at(row, cRemark))), Cells.str(Cells.at(row, cPlan)),
+                    pii.scrub(Cells.str(Cells.at(row, cPnote))), now});
         }
         jdbc.batchUpdate("""
                 INSERT INTO ia_screen
@@ -170,11 +172,11 @@ public class IaImportService {
     }
 
     /** 엑셀 값이 DB 값과 달라졌는지 — 사람이 화면에서 고친 것도 여기서 잡힌다 */
-    private static boolean changed(Map<String, Object> prev, Object[] v) {
+    private boolean changed(Map<String, Object> prev, Object[] v) {
         return !eq(prev.get("status"), Cells.str(Cells.at(v, 13)))
-                || !eq(prev.get("content"), Cells.str(Cells.at(v, 9)))
-                || !eq(prev.get("action"), Cells.str(Cells.at(v, 14)))
-                || !eq(prev.get("owner"), Cells.str(Cells.at(v, 12)))
+                || !eq(prev.get("content"), pii.scrub(Cells.str(Cells.at(v, 9))))
+                || !eq(prev.get("action"), pii.scrub(Cells.str(Cells.at(v, 14))))
+                || !eq(prev.get("owner"), pii.tokenOf(com.aegis.pm.pii.PiiRegistry.PERSON, Cells.str(Cells.at(v, 12))))
                 || !eq(prev.get("severity"), Cells.str(Cells.at(v, 7)));
     }
 
@@ -186,6 +188,12 @@ public class IaImportService {
                         String type, String sev, String prio, String content, String repro, String finder,
                         String owner, String status, String action, String doneDt, String retest, String remark,
                         String source, String batchId, String now) {
+        finder = pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, finder);
+        owner = pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, owner);
+        content = pii.scrub(content);
+        repro = pii.scrub(repro);
+        action = pii.scrub(action);
+        remark = pii.scrub(remark);
         String hash = DefectService.hashOf(remark);
         int updated = jdbc.update("""
                 UPDATE defect SET reg_dt=?, wbs_id=?, req_id=?, system_name=?, screen=?, def_type=?, severity=?,

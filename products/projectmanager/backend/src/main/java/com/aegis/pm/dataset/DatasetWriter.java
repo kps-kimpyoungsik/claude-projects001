@@ -30,12 +30,53 @@ public class DatasetWriter {
     private final ObjectMapper json = new ObjectMapper();
     /** 뷰 데이터셋의 행 공급자 — 순환 의존을 피하려 선택 주입한다 */
     private final com.aegis.pm.dds.CoreView coreView;
+    private final com.aegis.pm.pii.PiiVault pii;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DatasetWriter.class);
+    /** P3(주민번호 등) 셀에 대신 저장하는 값 — 원문은 받지 않는다 (pii 지침 G-3) */
+    public static final String P3_BLOCKED = "[개인정보 차단]";
 
     public DatasetWriter(JdbcTemplate jdbc,
                          @org.springframework.beans.factory.annotation.Autowired(required = false)
-                         com.aegis.pm.dds.CoreView coreView) {
+                         com.aegis.pm.dds.CoreView coreView,
+                         com.aegis.pm.pii.PiiVault pii) {
         this.jdbc = jdbc;
         this.coreView = coreView;
+        this.pii = pii;
+    }
+
+    /**
+     * 저장 직전 개인정보 처리 — P2 헤더 칸은 토큰, 어느 칸이든 P3 값은 차단 (pii 설계서 §5·§6).
+     * 컬럼 프로파일(min/max)도 이 결과로 계산되므로 원문이 dataset_column 에 새지 않는다.
+     */
+    private List<Map<String, String>> protect(String datasetId, List<String> headers, List<Map<String, String>> rows) {
+        Map<String, String> kinds = new LinkedHashMap<>();
+        for (String h : headers) {
+            String k = com.aegis.pm.pii.PiiRegistry.kindOfHeader(h);
+            if (k != null) kinds.put(h, k);
+        }
+        List<Map<String, String>> out = new ArrayList<>(rows.size());
+        int blocked = 0;
+        for (Map<String, String> r : rows) {                       // 1차: P3 차단 · P2 칸 토큰 (금고에 사람이 올라간다)
+            Map<String, String> c = new LinkedHashMap<>(r);
+            for (var e : c.entrySet()) {
+                if (com.aegis.pm.pii.PiiRegistry.isP3(e.getValue())) { e.setValue(P3_BLOCKED); blocked++; }
+            }
+            kinds.forEach((h, k) -> c.computeIfPresent(h, (key, v) -> pii.tokenize(k, v)));
+            out.add(c);
+        }
+        for (Map<String, String> c : out) {                        // 2차: 나머지 칸 본문 속 이름
+            for (var e : c.entrySet()) {
+                if (!kinds.containsKey(e.getKey())) e.setValue(pii.scrub(e.getValue()));
+            }
+        }
+        for (int i = 0; i < headers.size(); i++) {                 // 헤더가 사람 이름인 시트(인력 배치표)
+            String h = headers.get(i), s = pii.scrub(h);
+            if (s.equals(h)) continue;
+            headers.set(i, s);
+            for (Map<String, String> c : out) if (c.containsKey(h)) c.put(s, c.remove(h));
+        }
+        if (blocked > 0) log.warn("[개인정보] {} — 고유식별정보로 보이는 셀 {}개를 저장하지 않았습니다 (지침 G-3)", datasetId, blocked);
+        return out;
     }
 
     /** 데이터셋 1개를 통째로 교체 저장 */
@@ -43,6 +84,8 @@ public class DatasetWriter {
     public int write(String datasetId, String name, String sheetName, String sourceFile, String batchId,
                      List<String> headers, List<Map<String, String>> rows) {
         String now = LocalDateTime.now().format(TS);
+        headers = new ArrayList<>(headers);   // protect 가 이름 헤더를 토큰으로 바꾼다
+        rows = protect(datasetId, headers, rows);
 
         jdbc.update("DELETE FROM dataset_row WHERE dataset_id = ?", datasetId);
         jdbc.update("DELETE FROM dataset_column WHERE dataset_id = ?", datasetId);
@@ -136,7 +179,10 @@ public class DatasetWriter {
                 "SELECT payload FROM dataset_row WHERE dataset_id = ? AND row_no = ?", String.class, datasetId, rowNo);
         if (payloads.isEmpty()) return false;
         Map<String, String> row = fromJson(payloads.get(0));
-        row.putAll(changes);
+        changes.forEach((col, v) -> {
+            String k = com.aegis.pm.pii.PiiRegistry.kindOfHeader(col);
+            row.put(col, k == null ? v : pii.tokenize(k, v));
+        });
         jdbc.update("UPDATE dataset_row SET payload = ? WHERE dataset_id = ? AND row_no = ?",
                 toJson(row), datasetId, rowNo);
         return true;
@@ -150,6 +196,8 @@ public class DatasetWriter {
      */
     public int findRow(String datasetId, String column, String value) {
         if (value == null) return -1;
+        String kind = com.aegis.pm.pii.PiiRegistry.kindOfHeader(column);
+        if (kind != null) value = pii.tokenOf(kind, value);
         String like = "%" + literal(column) + ":" + literal(value) + "%";
         List<Object[]> hits = jdbc.query(
                 "SELECT row_no, payload FROM dataset_row WHERE dataset_id = ? AND payload LIKE ? ORDER BY row_no",

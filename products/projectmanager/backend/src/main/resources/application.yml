@@ -57,6 +57,16 @@ logging:
 pm:
   api-key: ${PM_API_KEY:}
 
+  # 개인정보 보호 (plans/_opens/pii_protection) — 성명 등 P2 는 토큰으로 저장, 원문은 pii_vault 에 RSA 봉투 암호문.
+  #   index-key   : 토큰 계산용 비밀(HMAC). 비면 보호 **비활성**(평문 저장, 기동 로그 경고)
+  #   private-key : 개인키 파일 경로(저장소 밖). 없으면 마스킹만 가능
+  #   reveal      : true 이고 개인키가 있을 때만 응답에 원문. 외부 노출 서버는 false (지침 G-8)
+  pii:
+    public-key: ${PM_PII_PUBLIC_KEY:classpath:pii/pii_public.pem}
+    index-key: ${PM_PII_INDEX_KEY:}
+    private-key: ${PM_PII_PRIVATE_KEY:}
+    reveal: ${PM_PII_REVEAL:false}
+
   # 메모리 압박 가드 — OOM 으로 죽는 대신 503 으로 거절한다.
   #   힙은 start.cmd/start.sh 의 -XX:MaxRAMPercentage 로 머신에 맞춰 자란다(고정값 없음).
   #   threshold : GC 직후 old 영역 사용률. 이 값을 넘으면 /api/** 를 거절한다(/api/meta 는 통과).

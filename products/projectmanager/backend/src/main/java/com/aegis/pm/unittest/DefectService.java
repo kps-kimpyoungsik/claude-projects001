@@ -42,10 +42,12 @@ public class DefectService {
 
     private final JdbcTemplate jdbc;
     private final IaScopeService ia;
+    private final com.aegis.pm.pii.PiiVault pii;
 
-    public DefectService(JdbcTemplate jdbc, IaScopeService ia) {
+    public DefectService(JdbcTemplate jdbc, IaScopeService ia, com.aegis.pm.pii.PiiVault pii) {
         this.jdbc = jdbc;
         this.ia = ia;
+        this.pii = pii;
     }
 
     // ── 조회 ────────────────────────────────────────────────────────────────
@@ -79,9 +81,12 @@ public class DefectService {
             args.add(batchId);
         }
         if (q != null && !q.isBlank()) {
-            sql.append(" AND (LOWER(defect_id) LIKE ? OR LOWER(screen) LIKE ? OR LOWER(content) LIKE ? OR LOWER(owner) LIKE ?)");
+            // 담당자는 토큰으로 저장돼 부분 검색이 안 된다 — 이름 전체가 같으면 토큰으로 찾는다 (pii 설계서 §6)
+            sql.append(" AND (LOWER(defect_id) LIKE ? OR LOWER(screen) LIKE ? OR LOWER(content) LIKE ? OR LOWER(owner) LIKE ?"
+                    + " OR owner LIKE ? OR content LIKE ?)");
             String like = "%" + q.toLowerCase() + "%";
-            args.add(like); args.add(like); args.add(like); args.add(like);
+            String person = "%" + pii.tokenOf(com.aegis.pm.pii.PiiRegistry.PERSON, q.trim()) + "%";   // "고객사,PII-…" 복합값·본문 속 토큰
+            args.add(like); args.add(like); args.add(like); args.add(like); args.add(person); args.add(person);
         }
         sql.append(" ORDER BY defect_id DESC");
         // H2 는 컬럼 키를 대문자로, PostgreSQL 은 소문자로 준다. 화면(`Defects.jsx`)은
@@ -162,9 +167,9 @@ public class DefectService {
                 nz(p.get("wbsId")), nz(p.get("reqId")), nz(p.get("systemName")), nz(p.get("screen")),
                 orDefault(p.get("defType"), DEF_TYPE), orDefault(p.get("severity"), DEF_SEV),
                 orDefault(p.get("priority"), DEF_PRIO),
-                nz(p.get("content")), nz(p.get("repro")), nz(p.get("finder")), nz(p.get("owner")),
-                orDefault(p.get("status"), ST_OTHER), nz(p.get("action")), nz(p.get("doneDt")),
-                nz(p.get("retest")), nz(p.get("remark")), null, "manual", now, now);
+                pii.scrub(nz(p.get("content"))), pii.scrub(nz(p.get("repro"))), pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, nz(p.get("finder"))), pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, nz(p.get("owner"))),
+                orDefault(p.get("status"), ST_OTHER), pii.scrub(nz(p.get("action"))), nz(p.get("doneDt")),
+                nz(p.get("retest")), pii.scrub(nz(p.get("remark"))), null, "manual", now, now);
         return Map.of("ok", true, "defectId", id);
     }
 
@@ -196,7 +201,9 @@ public class DefectService {
         fields.forEach((key, col) -> {
             if (p.containsKey(key)) {
                 sets.add(col + " = ?");
-                args.add(nz(p.get(key)));
+                boolean person = "owner".equals(key) || "finder".equals(key);
+                boolean text = "content".equals(key) || "repro".equals(key) || "action".equals(key) || "remark".equals(key);
+                args.add(person ? pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, nz(p.get(key))) : text ? pii.scrub(nz(p.get(key))) : nz(p.get(key)));
             }
         });
         if (sets.isEmpty()) return Map.of("ok", false, "error", "변경할 항목이 없습니다.");
@@ -281,8 +288,8 @@ public class DefectService {
                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         """,
                         id, LocalDate.now().format(YMD), "", key, "", nz(t.get("screen")),
-                        DEF_TYPE, DEF_SEV, DEF_PRIO, nz(t.get("plan")), "", "기획", nz(t.get("owner")),
-                        devByKey.getOrDefault(key, ST_OTHER), nz(t.get("dev")), "", "",
+                        DEF_TYPE, DEF_SEV, DEF_PRIO, pii.scrub(nz(t.get("plan"))), "", "기획", pii.tokenize(com.aegis.pm.pii.PiiRegistry.PERSON, nz(t.get("owner"))),
+                        devByKey.getOrDefault(key, ST_OTHER), pii.scrub(nz(t.get("dev"))), "", "",
                         AUTO_TAG + " #" + hash, hash, "ia-event", now, now);
             }
             added.add(id);

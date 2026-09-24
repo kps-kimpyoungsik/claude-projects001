@@ -440,3 +440,19 @@ TODO 에 `DB에서 수정한 IA 값이 있으면 함께 사라진다` 고 적혀
 - 생성자 모호성 실수 2회(`MemoryGuardFilter`·`FilenameRepair`) — 3회차 시 error_kb 등재.
 - 메모리 근본: 브라우저 4.7GB · VS Code 3.6GB (사용자 영역, JVM 측 조치는 완료).
 
+
+---
+
+## 2026-09-24 처리 결과 (개인정보 보호 — 가명 토큰 + RSA 금고)
+
+설계 `plans/_opens/pii_protection/00_설계서.md` · 지침 `01_지침.md`(G-1~G-13).
+- 성명(P2)은 업무 테이블·시트 payload·자유 텍스트에 **토큰**(`PII-…`, HMAC)만, 원문은 `pii_vault` 에 **RSA-3072 OAEP + AES-256-GCM 봉투 암호문**. 응답은 마스킹(`홍*동#3fa2c1`), `PM_PII_REVEAL=true`+개인키일 때만 원문.
+- 키: 공개키 커밋(`resources/pii/pii_public.pem`) · 색인키·개인키 경로는 `backend/.env` · **개인키는 `~/.pm-keys/pii_private.pem`(저장소 밖) — 잃으면 전환 후 원문 복구 불가, 오프라인 사본 필수**.
+- 운영 DB 복사본 실측: 금고 22명, 정형 757칸·본문 40칸·시트 552행 전환, 응답 토큰 노출 0, 파일 바이트 3자+ 이름 15→0(압축 후).
+- 테스트 116/116 (신규 PiiCryptoTest 6 · PiiFlowTest 9).
+- 1번: README 인프라 정보 → `plans/_private/INFRA.md`(git 제외) + 봉인본 `plans/INFRA.sealed`.
+
+**남은 것 (승인 필요)**
+- **운영 DB 전환 미실행** — `POST /api/admin/pii/migrate` 후 `SHUTDOWN COMPACT`. 전환 전 백업은 평문이므로 검증 후 폐기(G-9). `data/_backup/` 기존 백업 2개도 평문.
+- 2자 이름은 자유 텍스트에서 찾지 않음(일반 단어와 충돌). 금고에 없는 사람이 본문에만 나오면 못 찾음.
+- 업로드 원본 xlsx(`data/uploads/`)·엑셀 원본 파일 자체는 평문 — 2단계(원본 보관 정책과 함께).

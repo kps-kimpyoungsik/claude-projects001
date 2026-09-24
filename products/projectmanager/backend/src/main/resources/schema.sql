@@ -434,3 +434,14 @@ CREATE TABLE IF NOT EXISTS struct_metric (
   precision_v  DOUBLE PRECISION,           -- 채점 라벨 중 자동 판정이 맞은 비율 (NULL = 라벨 0)
   labels       INTEGER                     -- precision 의 분모 — 작으면 숫자를 믿지 말 것
 );
+
+-- 개인정보 금고 (plans/_opens/pii_protection) — 업무 테이블에는 token 만, 원문은 enc(봉투 암호문)로만 있다.
+--   enc  : v1:<RSA-OAEP(AES키)>:<IV>:<AES-256-GCM(원문)> — 개인키로만 복원
+--   mask : 김*수 — 공개 가능(P1), 개인키 없는 서버의 표시값
+CREATE TABLE IF NOT EXISTS pii_vault (
+  token       VARCHAR(20) PRIMARY KEY,       -- PII-<HMAC 12hex>
+  kind        VARCHAR(30) NOT NULL,          -- person_name | phone | email
+  mask        VARCHAR(200) NOT NULL,
+  enc         VARCHAR(100000) NOT NULL,      -- payload 칸과 같은 상한 — 값이 길어도 거절하지 않는다
+  created_at  VARCHAR(20) NOT NULL
+);
