@@ -431,7 +431,7 @@ TODO 에 `DB에서 수정한 IA 값이 있으면 함께 사라진다` 고 적혀
 - **기준 문서 실물 1건 미확보 — 5턴 연속 차단.** U2(기준→표준 어댑터)·검증 5인일이 여기 막혀 있다.
 - ✅ 2026-09-23 **U1 추출기 + G1 `case_usage` 완료** — `POST /api/sources`(xlsx·docx·pptx·txt/md/csv → 조각+locator, 이미지·음성·pdf 원본 수용). `plans/_works/uss_u1_extract_g1/`. U1은 U2에 의존하지 않는다는 정정: `01_단계지도.md` §7.
 - ✅ 2026-09-23 **U5-min 측정 루프 + 원본 자료 화면(`/data/raw`)** — 교정 화면 [맞음] 버튼·측정 띠·스냅샷 회귀 감지. 반례 검증으로 결함 2(pptx 그룹 도형·docx 중첩 표 유실) + OOM 1(50k행 xlsx) 수정. `plans/_works/uss_u5min_metric/`.
-- 차단 없는 착수분: `dataset_role`→`dataset_canon` rename(1, **C등급 승인 필요**). 실제 PostgreSQL 검증은 원격 공유 DB라 승인 필요.
+- ✅ 2026-09-24 `dataset_role`→`dataset_canon` rename 완료(설계 06·01·02, 컬럼 `role`→`canon`). 초기 커밋 `e4dab58` 완료(P0 #1 — `.gitignore` 줄끝 주석으로 `backend/data/`·`.env` 무력화돼 있던 것 교정 포함). 실제 PostgreSQL 검증은 원격 공유 DB라 승인 필요.
 - KH 등재 대기 4건: ①회수기 래퍼만 종료·자식 고아 생존(**3회 재현**) ②ASCII 골격 복원
   ③전송 경로 인코딩(HTTP 200 ≠ 인코딩 정상) ④VPN 어댑터 Private 프로필 방화벽.
 - `PM_API_KEY` 미설정 — tailnet 노출 상태에서 쓰기 API(복원·삭제·전량교체) 무인증.
