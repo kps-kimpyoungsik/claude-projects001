@@ -135,13 +135,15 @@ class PiiFlowTest {
     @Test
     void 기존_평문은_전환_API가_토큰으로_바꾸고_두번_돌려도_같다() {
         jdbc.update("INSERT INTO defect (defect_id, owner, finder, source) VALUES ('D-OLD','이영희','박민수','excel')");
+        jdbc.update("INSERT INTO defect (defect_id, owner, finder, source) VALUES ('D-ROLE','고객사,최지훈','기획','excel')");
         jdbc.update("INSERT INTO dataset (dataset_id, name, row_count, col_count) VALUES ('DS-OLD','x',1,1)");
         jdbc.update("INSERT INTO dataset_column (dataset_id, col_no, name, min_v, max_v) VALUES ('DS-OLD',0,'담당자','이영희','이영희')");
         jdbc.update("INSERT INTO dataset_row (dataset_id, row_no, payload) VALUES ('DS-OLD',0,'{\"담당자\":\"이영희\"}')");
 
         @SuppressWarnings("unchecked")
         Map<String, Integer> plain = (Map<String, Integer>) migration.status().get("plaintext");
-        assertEquals(1, plain.get("defect.owner"));
+        assertEquals(2, plain.get("defect.owner"), "이영희 + 고객사,최지훈 (역할어 finder '기획'은 변환 대상 아님)");
+        assertEquals(1, plain.get("defect.finder"));
 
         Map<String, Object> first = migration.migrate();
         assertTrue(PiiCrypto.isToken(ownerInDb("D-OLD")));

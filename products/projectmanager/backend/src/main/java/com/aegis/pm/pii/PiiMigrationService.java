@@ -59,8 +59,11 @@ public class PiiMigrationService {
             for (String v : jdbc.queryForList("SELECT DISTINCT " + c.column() + " FROM " + c.table() + " WHERE "
                     + c.column() + " IS NOT NULL AND " + c.column() + " <> '' AND " + c.column() + " NOT LIKE 'PII-%'",
                     String.class)) {
-                n += jdbc.update("UPDATE " + c.table() + " SET " + c.column() + " = ? WHERE " + c.column() + " = ?",
-                        vault.tokenize(c.kind(), v), v);
+                // 역할어("기획")·복합값("고객사,PII-…")은 이미 끝난 값 — 같은 값으로 다시 쓰면 멱등 보고가 거짓이 된다
+                String t = vault.tokenize(c.kind(), v);
+                if (!t.equals(v)) {
+                    n += jdbc.update("UPDATE " + c.table() + " SET " + c.column() + " = ? WHERE " + c.column() + " = ?", t, v);
+                }
             }
             changed.put(c.table() + "." + c.column(), n);
         }
