@@ -1,0 +1,11 @@
+# 빌드 산출물 / 의존성
+backend/target/
+# H2 파일 DB (실데이터) — git 은 줄 끝 주석을 지원하지 않는다. 주석은 반드시 별도 줄에
+backend/data/
+frontend/node_modules/
+frontend/dist/
+.mvn/wrapper/maven-wrapper.jar.tmp
+# DB 접속 비밀번호
+backend/.env
+
+backend/boot.log

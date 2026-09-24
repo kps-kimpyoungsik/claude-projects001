@@ -1,0 +1,76 @@
+<div class="busy" id="busy"><div class="box">시트에 저장 중…</div></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-logo"><div class="box">IA</div><div class="t">개발완료 범위</div></div>
+    <div class="sb-overall">
+      <div class="lab" id="ovLab">전체 개발 완료율</div>
+      <div class="v" id="ovVal">–</div>
+      <div class="obar"><i id="ovBar" style="width:0%"></i></div>
+    </div>
+    <div class="navwrap">
+      <div class="sb-sec">화면 목록</div>
+      <div id="navList"></div>
+    </div>
+    <div class="sb-foot">
+      <div class="sb-toggle" onclick="toggleSb()" title="메뉴 접기/펼치기"><span id="tgIc">⟨⟨</span><span class="lb" id="tgLb">접기</span></div>
+      <div class="sb-toggle" onclick="load(true)"><span>↻</span><span class="lb">시트 동기화</span></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="title" id="vTitle">전체</span>
+      <span class="sub" id="vSub"></span>
+      <span class="spacer"></span>
+      <button class="btn" onclick="expandAll(true)">모두 펼침</button>
+      <button class="btn" onclick="expandAll(false)">모두 접기</button>
+      <button class="btn" onclick="openSheet()">↗ 원본 시트</button>
+    </div>
+    <div class="scroll" id="scroll">
+      <div class="loading" id="loading">시트에서 불러오는 중…</div>
+      <div id="body" style="display:none">
+        <div class="section">
+          <h2 id="progH">진척 현황 <span class="tag" id="progTag"></span></h2>
+          <div class="dfh" id="planLbl" style="display:none">기획 영역 상태</div>
+          <div class="posbar" id="posbar"></div>
+          <div class="legend" id="legend"></div>
+          <div class="kpis" id="kpis"></div>
+          <div id="devBlock" style="display:none">
+            <div class="dfh" style="margin-top:14px">개발 영역 상태</div>
+            <div class="posbar" id="posbar2"></div>
+            <div class="legend" id="legend2"></div>
+            <div class="kpis" id="kpis2"></div>
+          </div>
+        </div>
+        <div class="section">
+          <h2>업무 영역별 진척 비율 <span class="tag" id="subTag"></span></h2>
+          <div id="stages"></div>
+        </div>
+        <div class="section" id="fbSec" style="display:none">
+          <h2><span id="fbTitle">기획 피드백 대기</span> <span class="tag" id="fbTag"></span></h2>
+          <div class="ogrid" id="fbOwners"></div>
+        </div>
+        <div class="section" id="pdSec" style="display:none">
+          <h2>개발완료 · 기획검토 대기 <span class="tag" id="pdTag"></span></h2>
+          <div class="wc-detail"><div id="pdList"></div></div>
+        </div>
+        <div class="section" id="dfSec" style="display:none">
+          <h2>결함 처리 현황 <span class="tag" id="dfTag"></span></h2>
+          <div class="kpis" id="dfKpis"></div>
+          <div class="dfgrid">
+            <div><div class="dfh">심각도</div><div id="dfSev"></div></div>
+            <div><div class="dfh">결함유형</div><div id="dfType"></div></div>
+            <div><div class="dfh">담당자</div><div id="dfOwner"></div></div>
+          </div>
+          <div class="dfh" style="margin-top:12px">결함 목록 <span class="tag" id="dfListTag"></span></div>
+          <div class="wc-detail"><div id="dfList"></div></div>
+        </div>
+        <div class="section">
+          <h2>3 Depth 영역 카드 <span class="tag">카드 클릭 → 4·5 Depth 상세 · 상태/설명 수정 시 시트 즉시 반영</span></h2>
+          <div class="grid" id="cards"></div>
+        </div>
+      </div>
+      <div class="err" id="err" style="display:none"></div>
+    </div>
+  </div>
+</div>

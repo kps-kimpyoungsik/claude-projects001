@@ -1,0 +1,17 @@
+<div id="toast" class="toast">🔄 최신 데이터로 동기화됨</div>
+  <div class="top">
+    <div><h1>📊 주간 업무보고</h1><div style="font-size:11px;opacity:.75;margin-top:3px">WBS 실시간 대시보드</div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="v" id="kp">-</div><div class="l">계획진척</div></div>
+      <div class="kpi"><div class="v" id="ka">-</div><div class="l">실적진척</div></div>
+      <div class="kpi"><div class="v" id="ks">-</div><div class="l">SPI</div></div>
+    </div>
+    <div class="sync">
+      <div>최종 갱신<br><span id="last" style="opacity:.7">대기…</span></div>
+      <div id="ownerCtl" style="display:none;gap:8px;align-items:center">
+        <button onclick="load()" style="background:#137333;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer">🔄 갱신</button>
+        <div class="timer" id="timer">2:00</div>
+      </div>
+    </div>
+  </div>
+  <div id="body"><div class="loading">⏳ 데이터를 불러오는 중…</div></div>

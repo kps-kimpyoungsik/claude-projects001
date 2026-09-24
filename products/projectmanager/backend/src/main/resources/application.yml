@@ -1,0 +1,67 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: projectmanager
+
+  # 기본은 H2 파일 DB — 설치가 필요 없다.
+  # PostgreSQL 전환 시 이 블록만 교체하면 된다(코드 변경 없음):
+  #   url: jdbc:postgresql://localhost:5432/pm
+  #   driver-class-name: org.postgresql.Driver
+  #   username / password
+  datasource:
+    url: jdbc:h2:file:./data/wbs;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  servlet:
+    multipart:
+      max-file-size: 30MB
+      max-request-size: 30MB
+
+  sql:
+    init:
+      mode: always          # schema.sql 매 기동 시 적용 (CREATE TABLE IF NOT EXISTS)
+
+wbs:
+  # 조회 소스 — excel(기본) | db
+  #   excel : 엑셀 파일을 직접 읽는다(저장하면 즉시 반영)
+  #   db    : DB에 적재된 데이터를 읽는다(엑셀 파일 없이 동작). 먼저 POST /api/admin/import 필요
+  source: excel
+
+  # 엑셀 원본 (source=excel 조회용 + source=db 일 때의 업로드 원본)
+  file: ../중소기업중앙회_WEB통합자금관리시스템고도화_wbs_v1.0_20260831.xlsx
+  raw-sheet: WBS_Raw
+  # source=db 이면서 DB가 비어 있을 때 기동 시 자동 적재
+  import-on-start: true
+
+# 단위테스트 영역 원본 (참고하는 시트만 적재한다)
+unittest:
+  ia-file: ../통합테스트 개발 완료 범위 현행화_V0.1.xlsx
+  ia-sheet: PC_IA(화면목록)
+  defect-file: ../작업확인-개발WBS_결함관리_통합대장.xlsx
+  defect-sheet: 기획요청-결함혹은수정요청분
+  defect-header-row: 3
+  cors-origins: http://localhost:5173
+
+logging:
+  level:
+    com.aegis.pm: INFO
+
+# 쓰기 API 보호 (TODO P0 #3) — POST/PUT/DELETE 에 X-API-Key 헤더를 요구한다.
+#   빈 값이면 **검사하지 않는다**: 로컬 개발·테스트가 그대로 돌아가게 하기 위한 의도된 기본값.
+#   배포 환경에서는 반드시 설정할 것 — 빠뜨리면 무방비로 뜬다(기동 로그에 상태가 찍힌다).
+#   프론트는 빌드 시 VITE_API_KEY 로 같은 값을 주입한다.
+pm:
+  api-key: ${PM_API_KEY:}
+
+  # 메모리 압박 가드 — OOM 으로 죽는 대신 503 으로 거절한다.
+  #   힙은 start.cmd/start.sh 의 -XX:MaxRAMPercentage 로 머신에 맞춰 자란다(고정값 없음).
+  #   threshold : GC 직후 old 영역 사용률. 이 값을 넘으면 /api/** 를 거절한다(/api/meta 는 통과).
+  #               낮추면 일찍 거절(안전·가용성↓), 높이면 늦게 거절(가용성↑·OOM 위험↑).
+  #   0 또는 1 이상이면 가드 비활성(fail-open).
+  mem-guard:
+    threshold: ${PM_MEM_GUARD_THRESHOLD:0.85}
+    retry-after-sec: ${PM_MEM_GUARD_RETRY_AFTER:20}

@@ -1,0 +1,73 @@
+/* 원본: Hub.html — Apps Script 템플릿 그대로. 선택자만 .pg-hub 아래로 스코프됨.
+   수정하지 말 것: node tools/extract-styles.mjs 로 재생성된다. */
+.pg-hub {
+    --ink:#333333; --sub:#6b7280; --line:#e8e8ef;
+    --indigo:#3D318D; --indigo2:#2c2470; --accent:#6E56CF; --accentLt:#8a74e0;
+    --bg:#F9F9FC; --card:#ffffff;
+    --dot-o:#e37400; --dot-r:#c5221f; --dot-g:#137333; --dot-dr:#8a1a17;
+  }
+.pg-hub * {box-sizing:border-box}
+.pg-hub {margin:0;height:100%;font-family:'Pretendard','Noto Sans KR','Malgun Gothic','Segoe UI',sans-serif;color:var(--ink);background:var(--bg)}
+.pg-hub .app {display:flex;height:100vh;overflow:hidden}
+.pg-hub .sidebar {width:230px;flex:0 0 230px;background:var(--indigo);color:#fff;display:flex;flex-direction:column;transition:width .2s ease;overflow:hidden}
+.pg-hub .sidebar.collapsed {width:62px;flex-basis:62px}
+.pg-hub .sb-logo {display:flex;align-items:center;gap:9px;padding:16px 14px 10px}
+.pg-hub .sb-logo .box {width:34px;height:34px;flex:0 0 34px;background:#fff;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--accent);font-size:18px}
+.pg-hub .sb-logo .t {font-weight:800;font-size:15px;white-space:nowrap}
+.pg-hub .sidebar.collapsed .sb-logo .t {display:none}
+.pg-hub .sb-overall {margin:6px 12px 12px;background:rgba(255,255,255,.10);border-radius:10px;padding:10px 12px}
+.pg-hub .sb-overall .lab {font-size:11px;color:#cfc7f0}
+.pg-hub .sb-overall .v {font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+.pg-hub .sb-overall .obar {height:6px;background:rgba(255,255,255,.2);border-radius:4px;overflow:hidden;margin-top:6px}
+.pg-hub .sb-overall .obar>i {display:block;height:100%;background:#fff;border-radius:4px;transition:width .8s}
+.pg-hub .sidebar.collapsed .sb-overall {display:none}
+.pg-hub .sb-sec {font-size:10px;color:#b7ace8;text-transform:uppercase;letter-spacing:.5px;padding:8px 16px 4px;white-space:nowrap}
+.pg-hub .sidebar.collapsed .sb-sec {visibility:hidden;height:12px;padding:6px 0}
+.pg-hub .navi {display:flex;align-items:center;gap:11px;padding:10px 14px;cursor:pointer;border-left:3px solid transparent;transition:background .12s;white-space:nowrap}
+.pg-hub .navi:hover {background:rgba(255,255,255,.08)}
+.pg-hub .navi.active {background:rgba(110,86,207,.55);border-left-color:#fff}
+.pg-hub .navi .ic {width:26px;flex:0 0 26px;display:flex;align-items:center;justify-content:center}
+.pg-hub .navi .ic svg {width:20px;height:20px;stroke:#fff;opacity:.92}
+.pg-hub .navi .lb {flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.pg-hub .navi .cnt {background:rgba(255,255,255,.18);border-radius:9px;padding:1px 8px;font-size:11px;font-weight:800;min-width:22px;text-align:center}
+.pg-hub .navi .cnt.mini {font-size:10px}
+.pg-hub .sidebar.collapsed .navi .lb, .pg-hub .sidebar.collapsed .navi .cnt {display:none}
+.pg-hub .navi .miniprog {position:absolute}
+.pg-hub .navwrap {overflow-y:auto;flex:1}
+.pg-hub .sb-foot {border-top:1px solid rgba(255,255,255,.12);padding:8px 6px}
+.pg-hub .sb-toggle {display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;color:#cfc7f0;font-size:12px;white-space:nowrap}
+.pg-hub .sb-toggle:hover {color:#fff}
+.pg-hub .sb-toggle .ic {width:26px;flex:0 0 26px;text-align:center;font-size:15px}
+.pg-hub .sidebar.collapsed .sb-toggle .lb {display:none}
+.pg-hub .main {flex:1;display:flex;flex-direction:column;min-width:0}
+.pg-hub .topbar {height:54px;flex:0 0 54px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px}
+.pg-hub .topbar .home {font-size:16px;cursor:pointer;color:var(--accent);font-weight:800}
+.pg-hub .topbar .title {font-weight:800;font-size:15px}
+.pg-hub .topbar .sub {font-size:12px;color:var(--sub)}
+.pg-hub .topbar .spacer {flex:1}
+.pg-hub .topbar .btn {background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px}
+.pg-hub .topbar .btn:hover {background:var(--accentLt)}
+.pg-hub .topbar .btn.ghost {background:#eef;color:var(--accent)}
+.pg-hub .viewwrap {flex:1;position:relative;background:var(--bg)}
+.pg-hub #view {position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
+.pg-hub .vspin {position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:13px;background:var(--bg);z-index:2;transition:opacity .3s}
+.pg-hub .vspin.hide {opacity:0;pointer-events:none}
+.pg-hub .imodal-scrim {display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;align-items:center;justify-content:center;padding:20px}
+.pg-hub .imodal-scrim.show {display:flex}
+.pg-hub .imodal {background:#fff;border-radius:14px;max-width:380px;width:100%;padding:20px;max-height:86vh;overflow-y:auto}
+.pg-hub .imodal h3 {margin:0 0 12px;font-size:16px;color:var(--indigo)}
+.pg-hub .imodal .step {display:flex;gap:10px;margin-bottom:12px;font-size:13px;line-height:1.5}
+.pg-hub .imodal .step b {flex:0 0 22px;height:22px;background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px}
+.pg-hub .imodal .close {margin-top:8px;width:100%;background:#eef1f6;border:none;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;color:var(--ink)}
+@media(max-width:640px) {
+.pg-hub .sidebar {width:62px;flex-basis:62px}
+.pg-hub .sidebar .lb, .pg-hub .sidebar .cnt, .pg-hub .sidebar .t, .pg-hub .sb-overall {display:none}
+.pg-hub .sidebar.mobile-open {
+      position:fixed;top:0;left:0;bottom:0;width:220px;flex-basis:220px;z-index:1000;
+      box-shadow:2px 0 18px rgba(0,0,0,.28)
+    }
+.pg-hub .sidebar.mobile-open .lb, .pg-hub .sidebar.mobile-open .cnt, .pg-hub .sidebar.mobile-open .t, .pg-hub .sidebar.mobile-open .sb-overall {display:block}
+.pg-hub .sidebar.mobile-open .navi {display:flex}
+.pg-hub .sb-scrim {display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:999}
+.pg-hub .sb-scrim.show {display:block}
+}

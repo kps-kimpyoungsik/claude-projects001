@@ -1,0 +1,19 @@
+# PostgreSQL 프로파일 — 원격 컨테이너 project-pm-manager-db (<db-host>:5434)
+#   실행: run-postgres.cmd  (또는 .env 를 환경변수로 올린 뒤 --spring.profiles.active=postgres)
+#   비밀번호는 이 파일에 두지 않는다 — .env(git 제외)에서 환경변수로 주입한다.
+spring:
+  datasource:
+    url: jdbc:postgresql://${PM_DB_HOST}:${PM_DB_PORT}/${PM_DB_NAME}
+    driver-class-name: org.postgresql.Driver
+    username: ${PM_DB_USER}
+    password: ${PM_DB_PASSWORD}
+    hikari:
+      connection-timeout: 10000
+      maximum-pool-size: 5
+  sql:
+    init:
+      mode: always      # schema.sql (CREATE TABLE IF NOT EXISTS) — 매 기동 idempotent 적용
+
+wbs:
+  source: db            # 조회는 DB에서. 엑셀은 적재 원본으로만 쓴다
+  import-on-start: true # DB가 비어 있으면 기동 시 엑셀 1회 자동 적재

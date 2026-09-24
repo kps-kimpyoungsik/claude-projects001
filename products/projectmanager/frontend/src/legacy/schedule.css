@@ -1,0 +1,86 @@
+/* 원본: wbs_All_Day.html — Apps Script 템플릿 그대로. 선택자만 .pg-schedule 아래로 스코프됨.
+   수정하지 말 것: node tools/extract-styles.mjs 로 재생성된다. */
+.pg-schedule {max-width:100%;overflow-x:hidden}
+@media(max-width:640px) {
+.pg-schedule table {display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.pg-schedule {font-size:12px}
+}
+.pg-schedule { --bg:#f4f6f9; --card:#fff; --ink:#202124; --sub:#5f6368; --line:#e6e9ee;
+         --blue:#1a73e8; --green:#137333; --gray:#9aa0a6; --amber:#e37400; }
+.pg-schedule * {box-sizing:border-box;margin:0;padding:0}
+.pg-schedule {font-family:'Malgun Gothic','Segoe UI',sans-serif;background:var(--bg);color:var(--ink);padding:16px;font-size:12.5px}
+.pg-schedule .top {background:#202124;color:#fff;border-radius:12px;padding:18px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:16px;justify-content:space-between;position:sticky;top:0;z-index:5}
+.pg-schedule .top h1 {font-size:18px;font-weight:700}
+.pg-schedule .kpis {display:flex;gap:10px;flex-wrap:wrap}
+.pg-schedule .kpi {background:rgba(255,255,255,.12);border-radius:8px;padding:8px 14px;text-align:center;min-width:88px}
+.pg-schedule .kpi .v {font-size:18px;font-weight:700}
+.pg-schedule .kpi .l {font-size:11px;opacity:.8;margin-top:2px}
+.pg-schedule .sync {display:flex;align-items:center;gap:10px;font-size:12px}
+.pg-schedule .timer {font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;background:var(--blue);padding:6px 12px;border-radius:8px;min-width:78px;text-align:center}
+.pg-schedule .timer.warn {background:var(--amber)}
+.pg-schedule .tools {margin:12px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pg-schedule .tools input, .pg-schedule .tools select {padding:7px 10px;border:1px solid var(--line);border-radius:7px;font-size:13px}
+.pg-schedule .tools input {flex:1;min-width:180px}
+.pg-schedule #applyBtn {background:#137333;color:#fff;border:0;border-radius:7px;padding:8px 16px;font-weight:800;cursor:pointer;box-shadow:0 0 0 0 rgba(19,115,51,.5);animation:dirtyPulse 1.1s ease-in-out infinite}
+.pg-schedule #cancelBtn {background:#9aa0a6;color:#fff;border:0;border-radius:7px;padding:8px 14px;font-weight:700;cursor:pointer}
+
+  @keyframes dirtyPulse{ 0%{box-shadow:0 0 0 0 rgba(19,115,51,.55)} 70%{box-shadow:0 0 0 7px rgba(19,115,51,0)} 100%{box-shadow:0 0 0 0 rgba(19,115,51,0)} }
+@media(prefers-reduced-motion:reduce) {
+.pg-schedule #applyBtn {animation:none}
+}
+.pg-schedule .wrap {background:var(--card);border-radius:10px;overflow:auto;box-shadow:0 1px 3px rgba(0,0,0,.08);max-height:calc(100vh - 200px)}
+.pg-schedule table {width:100%;border-collapse:collapse;font-size:12.5px}
+.pg-schedule th, .pg-schedule td {padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+.pg-schedule th {background:#343a40;color:#fff;font-size:11px;font-weight:700;position:sticky;top:0;z-index:2}
+.pg-schedule td.task {white-space:normal;min-width:240px}
+.pg-schedule td.c {text-align:center}
+.pg-schedule .d1 {font-weight:700;background:#eef3ff}
+.pg-schedule .d2 {font-weight:600;background:#f7f9fc}
+.pg-schedule .bar {background:#eef0f3;border-radius:5px;height:12px;width:70px;overflow:hidden;display:inline-block;vertical-align:middle}
+.pg-schedule .bar>i {display:block;height:100%;border-radius:5px}
+.pg-schedule .badge {display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;color:#fff}
+.pg-schedule .b-done {background:var(--green)}
+.pg-schedule .b-prog {background:var(--blue)}
+.pg-schedule .b-wait {background:var(--gray)}
+.pg-schedule .loading {text-align:center;padding:40px;color:var(--sub)}
+.pg-schedule .err {background:#fce8e6;color:#c5221f;padding:12px;border-radius:8px}
+.pg-schedule .cnt {color:var(--sub);font-size:12px}
+.pg-schedule .bar>i { transition:width .9s cubic-bezier(.22,1,.36,1); }
+
+  @keyframes flashUpdate{ 0%{background:rgba(255,214,102,.40)} 100%{background:transparent} }
+.pg-schedule .flash { animation:flashUpdate .9s ease-out; border-radius:10px; }
+
+  @keyframes fadeUp{ 0%{opacity:0;transform:translateY(8px)} 100%{opacity:1;transform:translateY(0)} }
+.pg-schedule .fadeup { animation:fadeUp .45s ease-out both; }
+
+  @keyframes pulse{ 0%{transform:scale(1)} 50%{transform:scale(1.12)} 100%{transform:scale(1)} }
+.pg-schedule .timer.pulse { animation:pulse .45s ease-out; }
+
+  @keyframes pop{ 0%{transform:scale(.7);opacity:.3} 60%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }
+.pg-schedule .pop { animation:pop .5s cubic-bezier(.22,1,.36,1); display:inline-block; }
+.pg-schedule .toast { position:fixed; top:18px; right:18px; background:#202124; color:#fff; padding:11px 18px;
+          border-radius:10px; font-size:13px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,.25);
+          opacity:0; transform:translateY(-12px); pointer-events:none; z-index:9999;
+          transition:opacity .35s ease, transform .35s ease; }
+.pg-schedule .toast.on { opacity:1; transform:translateY(0); }
+@media(prefers-reduced-motion:reduce) {
+.pg-schedule .bar>i {transition:none}
+.pg-schedule .flash, .pg-schedule .fadeup, .pg-schedule .timer.pulse, .pg-schedule .pop {animation:none}
+.pg-schedule .toast {transition:none}
+}
+.pg-schedule .addbox {background:var(--card);border-radius:10px;padding:11px 12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.08);border-left:4px solid #137333}
+.pg-schedule .addbox select, .pg-schedule .addbox input {padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:12.5px}
+.pg-schedule .addbox .lbl {font-size:12px;color:#137333;font-weight:800}
+.pg-schedule .addbtn {background:#137333;color:#fff;border:0;border-radius:7px;padding:8px 16px;font-weight:800;cursor:pointer}
+.pg-schedule .addbtn:disabled {opacity:.5;cursor:wait}
+.pg-schedule .mbtn {border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 7px;font-size:13px;cursor:pointer;line-height:1}
+.pg-schedule .mbtn.edit:hover {background:#eef3ff;border-color:var(--blue)}
+.pg-schedule .mbtn.del:hover {background:#fce8e6;border-color:#c5221f}
+.pg-schedule .mbtn.ins:hover {background:#e6f4ea;border-color:#137333}
+.pg-schedule td.manage {white-space:nowrap}
+.pg-schedule tr.sel { outline:2px solid var(--green); outline-offset:-2px; background:#eafaf0 !important; }
+.pg-schedule tr.draggable { cursor:grab; }
+.pg-schedule tr.dragging { opacity:.45; }
+.pg-schedule tr.dropafter td { border-bottom:2px solid var(--green) !important; }
+.pg-schedule .grip { color:#9aa0a6; cursor:grab; user-select:none; padding:0 2px; }
+.pg-schedule .deppick { font-size:11px; padding:1px 3px; border:1px solid var(--line); border-radius:5px; }

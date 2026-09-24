@@ -1,0 +1,23 @@
+<div id="toast" class="toast">🔄 최신 데이터로 동기화됨</div>
+  <div class="top">
+    <div><h1>🗂 인프라 이행계획</h1><div style="font-size:11px;opacity:.75;margin-top:3px">단계별 계획·수립시기 + 일자별 타임라인</div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="v" id="kp">-</div><div class="l">계획진척</div></div>
+      <div class="kpi"><div class="v" id="ka">-</div><div class="l">실적진척</div></div>
+      <div class="kpi"><div class="v" id="kd">-</div><div class="l">단계 수</div></div>
+    </div>
+    <div class="sync">
+      <div>최종 갱신<br><span id="last" style="opacity:.7">대기…</span></div>
+      <div id="ownerCtl" style="display:none;gap:8px;align-items:center">
+        <button onclick="load()" style="background:#137333;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer">🔄 갱신</button>
+        <div class="timer" id="timer">2:00</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">📐 단계별 계획 (수립시기 순)</div>
+  <div id="stages"><div class="loading">⏳ 불러오는 중…</div></div>
+
+  <div class="sec">📅 일자별 이행 타임라인</div>
+  <div class="daygrid" id="daygrid"></div>
+  <div id="timeline"></div>

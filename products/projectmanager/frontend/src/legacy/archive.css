@@ -1,0 +1,56 @@
+/* 원본: WeeklyArchive.html — Apps Script 템플릿 그대로. 선택자만 .pg-archive 아래로 스코프됨.
+   수정하지 말 것: node tools/extract-styles.mjs 로 재생성된다. */
+.pg-archive {
+    --bg:#eef1f6; --card:#fff; --ink:#1f2430; --sub:#6b7280; --line:#e3e7ee;
+    --blue:#1a73e8; --navy:#16284a; --green:#137333; --gray:#9aa0a6; --amber:#e37400; --red:#c5221f;
+  }
+.pg-archive * {box-sizing:border-box}
+.pg-archive {font-family:'Malgun Gothic','Segoe UI',sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:16px;font-size:13px}
+.pg-archive .top {background:var(--navy);color:#fff;border-radius:12px;padding:14px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.pg-archive .top h1 {font-size:17px;margin:0}
+.pg-archive .top .meta {font-size:11px;color:#c7d2e6}
+.pg-archive .btn {background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.pg-archive .btn:hover {background:rgba(255,255,255,.24)}
+.pg-archive .btn:disabled {opacity:.5;cursor:default}
+.pg-archive .btn2 {border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.pg-archive .btn2.save {color:var(--blue);border-color:var(--blue)}
+.pg-archive .btn2.del {color:var(--red);border-color:var(--red)}
+.pg-archive .btn2:disabled {opacity:.5;cursor:default}
+.pg-archive .wlist {display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.pg-archive .wsec {background:var(--card);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.pg-archive .wsec-h {display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;border-left:5px solid var(--gray)}
+.pg-archive .wsec.open .wsec-h {border-left-color:var(--blue)}
+.pg-archive .wsec-h .wtitle {font-weight:800;font-size:14px;color:var(--navy)}
+.pg-archive .wsec-h .wsub {font-size:11.5px;color:var(--sub)}
+.pg-archive .wsec-h .srcbadge {font-size:10px;font-weight:800;padding:2px 8px;border-radius:9px}
+.pg-archive .srcbadge.live {background:#e8f0fe;color:var(--blue)}
+.pg-archive .srcbadge.snap {background:#fff1b8;color:#8a6100}
+.pg-archive .wsec-h .caret {margin-left:auto;color:var(--sub);font-size:11px;transition:transform .2s}
+.pg-archive .wsec.open .caret {transform:rotate(90deg)}
+.pg-archive .wbody {display:none;padding:0 16px 16px}
+.pg-archive .wsec.open .wbody {display:block}
+.pg-archive .wloading {padding:24px;text-align:center;color:var(--sub);font-size:12.5px}
+.pg-archive .cols {display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:760px) {
+.pg-archive .cols {grid-template-columns:1fr}
+}
+.pg-archive .colhead {font-weight:800;font-size:12.5px;color:#fff;background:var(--navy);border-radius:8px 8px 0 0;padding:7px 12px}
+.pg-archive .colbody {border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px;padding:8px 12px}
+.pg-archive .area {margin-bottom:10px}
+.pg-archive .area:last-child {margin-bottom:0}
+.pg-archive .area-h {font-weight:800;font-size:12.5px;color:var(--navy);margin-bottom:4px}
+.pg-archive .item {display:flex;align-items:baseline;gap:8px;padding:3px 0;font-size:12.5px;border-bottom:1px dashed var(--line)}
+.pg-archive .item:last-child {border-bottom:0}
+.pg-archive .item .txt {flex:1}
+.pg-archive .item .status {flex:0 0 auto;font-weight:700;font-size:11px;padding:1px 8px;border-radius:8px}
+.pg-archive .status.done {background:#e6f4ea;color:var(--green)}
+.pg-archive .status.prog {background:#e8f0fe;color:var(--blue)}
+.pg-archive .item .due {flex:0 0 auto;font-size:11px;color:var(--sub);min-width:52px;text-align:right}
+.pg-archive .emptycol {color:#c3c8d1;font-style:italic;padding:6px 0;font-size:12px}
+.pg-archive .notes {margin-top:12px;background:#fdf6e3;border:1px solid #f0e0a8;border-radius:8px;padding:10px 14px}
+.pg-archive .notes h3 {margin:0 0 6px;font-size:12px;color:#8a6100}
+.pg-archive .notes textarea {width:100%;min-height:70px;border:1px solid #f0e0a8;border-radius:6px;padding:8px;font-size:12.5px;font-family:inherit;resize:vertical;box-sizing:border-box}
+.pg-archive .notes-ctl {display:flex;align-items:center;gap:8px;margin-top:8px}
+.pg-archive .notes-ctl .savedinfo {font-size:11px;color:var(--sub);flex:1}
+.pg-archive .emptystate {text-align:center;color:var(--sub);padding:60px 0;font-size:13px}
+.pg-archive .errbox {background:#fdecea;color:var(--red);border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px}

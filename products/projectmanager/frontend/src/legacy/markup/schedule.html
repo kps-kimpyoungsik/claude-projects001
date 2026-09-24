@@ -1,0 +1,40 @@
+<div id="toast" class="toast">🔄 최신 데이터로 동기화됨</div>
+  <div class="top">
+    <div><h1>🗂 전체 일정 (WBS)</h1><div style="font-size:11px;opacity:.75;margin-top:3px">전체 작업 분해 구조 · 실시간</div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="v" id="kp">-</div><div class="l">계획진척</div></div>
+      <div class="kpi"><div class="v" id="ka">-</div><div class="l">실적진척</div></div>
+      <div class="kpi"><div class="v" id="ks">-</div><div class="l">SPI</div></div>
+    </div>
+    <div class="sync">
+      <div>최종 갱신<br><span id="last" style="opacity:.7">대기…</span></div>
+      <div id="ownerCtl" style="display:none;gap:8px;align-items:center">
+        <button onclick="manualRefresh()" style="background:#137333;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer">🔄 갱신</button>
+        <div class="timer" id="timer">2:00</div>
+      </div>
+    </div>
+  </div>
+  <div class="tools">
+    <input id="q" placeholder="🔍 작업명/담당자 검색…" oninput="draw()">
+    <select id="st" onchange="draw()"><option value="">전체 상태</option><option>완료</option><option>진행중</option><option>대기</option></select>
+    <span class="cnt" id="cnt"></span>
+    <button id="applyBtn" onclick="applyChanges()" style="display:none">✅ 적용</button>
+    <button id="cancelBtn" onclick="cancelChanges()" style="display:none">↩ 취소</button>
+  </div>
+  <div class="addbox">
+    <span class="lbl">➕ 행 추가</span>
+    <select id="adDep" title="공정 레벨(depth)">
+      <option value="1">대공정</option><option value="2">중공정</option>
+      <option value="3" selected>소공정</option><option value="4">하위</option>
+      <option value="5">세부</option><option value="6">세세부</option>
+    </select>
+    <input id="adName" type="text" placeholder="작업명*" style="min-width:150px">
+    <input id="adStart" type="date" title="계획 시작">
+    <input id="adEnd" type="date" title="계획 종료">
+    <input id="adOwner" type="text" placeholder="담당" style="width:80px">
+    <input id="adPart" type="text" placeholder="파트" style="width:70px">
+    <input id="adProg" type="number" min="0" max="100" placeholder="진척%" style="width:78px">
+    <button class="addbtn" id="adBtn" onclick="submitRow()">추가</button>
+    <button id="adCancel" onclick="cancelEdit()" style="display:none;background:#9aa0a6;color:#fff;border:0;border-radius:7px;padding:8px 14px;font-weight:700;cursor:pointer">취소</button>
+  </div>
+  <div class="wrap"><div id="body"><div class="loading">⏳ 데이터를 불러오는 중…</div></div></div>

@@ -1,0 +1,25 @@
+<div id="toast" class="toast">🔄 최신 데이터로 동기화됨</div>
+  <div class="wrap">
+    <div class="hero" id="hero">
+      <div>
+        <h1 id="rptTitle"><b>현황</b></h1>
+        <div class="sub" id="sub">실시간 종합 보고 · 데이터 동기화 대기…</div>
+      </div>
+      <div class="sync">
+        <div style="text-align:right">최종 갱신<br><span id="last" style="opacity:.8">대기…</span></div>
+        <div id="ownerCtl" style="display:none;gap:8px;align-items:center">
+          <button class="btn" onclick="load()">🔄 갱신</button>
+          <div class="timer" id="timer">2:00</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">📊 전체 진척 현황</div>
+    <div class="kpis" id="kpis"><div class="loading">⏳ 불러오는 중…</div></div>
+
+    <div class="sec">🧭 상태 분포</div>
+    <div class="statbar" id="statbar"></div>
+
+    <div class="sec">🗂 영역별 현황</div>
+    <div class="grid" id="areas"></div>
+  </div>

@@ -1,0 +1,30 @@
+/**
+ * 공통 디자인 토큰 — 화면마다 색을 따로 정의하던 것을 한 곳으로 모았다.
+ * (직전 회차 [다차원 관점]의 "공통 토큰 CSS로 추출" 개선안 적용)
+ *
+ * 외부 LNB = 진한 인디고(Hub 원본), 본문 = 밝은 단색 프레임.
+ * 원본 리포트 화면(legacy/*.css)은 각자의 팔레트를 그대로 쓰므로 여기 영향을 받지 않는다.
+ */
+:root {
+  --pm-ink: #333;
+  --pm-ink-strong: #2b2b33;
+  --pm-sub: #8b8b96;
+  --pm-line: #e6e6ef;
+  --pm-line-soft: #f0f0f6;
+  --pm-bg: #f8f8fb;
+  --pm-card: #fff;
+  --pm-hover: #f6f5fb;
+
+  --pm-accent: #6E56CF;
+  --pm-accent-dk: #4b3ba8;
+  --pm-accent-lt: #f1eefb;
+  --pm-indigo: #3D318D;
+
+  --pm-green: #137333;
+  --pm-red: #c5221f;
+  --pm-amber: #e37400;
+  --pm-gray: #9aa0a6;
+
+  --pm-radius: 12px;
+  --pm-radius-sm: 8px;
+}

@@ -1,0 +1,20 @@
+/* 전역 리셋 — 화면 테마는 각 페이지의 원본 CSS(legacy/*.css)가 담당한다.
+   여기는 Apps Script 원본에 없던 추가 화면(투입인력현황)의 최소 스타일만 둔다. */
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; }
+body { margin: 0; font-family: 'Pretendard','Noto Sans KR','Malgun Gothic','Segoe UI',sans-serif; }
+
+/* 원본 리포트가 들어가는 자리 — Hub 원본에서 iframe이 차지하던 영역 */
+.legacy-host { position: absolute; inset: 0; overflow: auto; }
+
+/* 투입인력현황(추가 화면) */
+.staffing { position: absolute; inset: 0; overflow: auto; padding: 16px; background: #F9F9FC; color: #333; font-size: 13px; }
+.staffing h1 { font-size: 19px; margin: 0 0 4px; color: #3D318D; }
+.staffing .muted { color: #6b7280; font-size: 12px; }
+.staffing .card { background: #fff; border-radius: 12px; padding: 16px 18px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.staffing table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.staffing th, .staffing td { padding: 7px 9px; border-bottom: 1px solid #e8e8ef; text-align: left; white-space: nowrap; }
+.staffing th { background: #f1f3f4; color: #6b7280; font-size: 11px; font-weight: 700; }
+.staffing td.num, .staffing th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.staffing tbody tr:hover td { background: #f7f9fc; }
+.staffing .empty { padding: 24px; text-align: center; color: #6b7280; }

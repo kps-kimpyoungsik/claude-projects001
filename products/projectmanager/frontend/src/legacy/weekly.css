@@ -1,0 +1,69 @@
+/* 원본: wbs_weekly.html — Apps Script 템플릿 그대로. 선택자만 .pg-weekly 아래로 스코프됨.
+   수정하지 말 것: node tools/extract-styles.mjs 로 재생성된다. */
+.pg-weekly {max-width:100%;overflow-x:hidden}
+@media(max-width:640px) {
+.pg-weekly table {display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.pg-weekly {font-size:12px}
+}
+.pg-weekly { --bg:#f4f6f9; --card:#fff; --ink:#202124; --sub:#5f6368; --line:#e0e3e8;
+         --blue:#1a73e8; --green:#137333; --gray:#9aa0a6; --amber:#e37400; }
+.pg-weekly * {box-sizing:border-box;margin:0;padding:0}
+.pg-weekly {font-family:'Malgun Gothic','Segoe UI',sans-serif;background:var(--bg);color:var(--ink);padding:16px;font-size:13px}
+.pg-weekly .top {background:#202124;color:#fff;border-radius:12px;padding:18px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:16px;justify-content:space-between}
+.pg-weekly .top h1 {font-size:18px;font-weight:700}
+.pg-weekly .kpis {display:flex;gap:10px;flex-wrap:wrap}
+.pg-weekly .kpi {background:rgba(255,255,255,.12);border-radius:8px;padding:8px 14px;text-align:center;min-width:92px}
+.pg-weekly .kpi .v {font-size:18px;font-weight:700}
+.pg-weekly .kpi .l {font-size:11px;opacity:.8;margin-top:2px}
+.pg-weekly .sync {display:flex;align-items:center;gap:10px;font-size:12px}
+.pg-weekly .timer {font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;background:var(--blue);padding:6px 12px;border-radius:8px;min-width:78px;text-align:center}
+.pg-weekly .timer.warn {background:var(--amber)}
+.pg-weekly .wk {background:var(--card);border-radius:10px;margin-top:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.pg-weekly .wk-h {background:#e8f0fe;color:#174ea6;font-weight:700;padding:10px 14px;font-size:14px;border-left:5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:8px}
+.pg-weekly .wk-h:hover {background:#dbe7fd}
+.pg-weekly .wcaret {font-size:11px;transition:transform .2s;flex:0 0 auto}
+.pg-weekly .wk.open .wcaret {transform:rotate(90deg)}
+.pg-weekly .wk-body {display:none}
+.pg-weekly .wk.open .wk-body {display:block}
+.pg-weekly .wctrl {margin:14px 2px 0;font-size:12px}
+.pg-weekly .wctrl a {color:var(--sub);text-decoration:underline;cursor:pointer;margin-right:10px}
+.pg-weekly table {width:100%;border-collapse:collapse}
+.pg-weekly th, .pg-weekly td {padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+.pg-weekly th {background:#f1f3f4;color:var(--sub);font-size:11px;font-weight:700;position:sticky;top:0}
+.pg-weekly td.c {text-align:center;white-space:nowrap}
+.pg-weekly .path {font-weight:600;color:var(--ink)}
+.pg-weekly .bar {background:#eef0f3;border-radius:6px;height:14px;width:90px;overflow:hidden;display:inline-block;vertical-align:middle}
+.pg-weekly .bar>i {display:block;height:100%;background:var(--blue);border-radius:6px}
+.pg-weekly .badge {display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:700;color:#fff}
+.pg-weekly .b-done {background:var(--green)}
+.pg-weekly .b-prog {background:var(--blue)}
+.pg-weekly .b-wait {background:var(--gray)}
+.pg-weekly .loading {text-align:center;padding:40px;color:var(--sub)}
+.pg-weekly .err {background:#fce8e6;color:#c5221f;padding:12px;border-radius:8px;margin-top:12px}
+@media(max-width:640px) {
+.pg-weekly .path {font-size:12px}
+.pg-weekly th:nth-child(7), .pg-weekly td:nth-child(7) {display:none}
+}
+.pg-weekly .bar>i { transition:width .9s cubic-bezier(.22,1,.36,1); }
+
+  @keyframes flashUpdate{ 0%{background:rgba(255,214,102,.45)} 100%{background:transparent} }
+.pg-weekly .flash { animation:flashUpdate .9s ease-out; border-radius:10px; }
+
+  @keyframes fadeUp{ 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
+.pg-weekly .fadeup { animation:fadeUp .5s ease-out both; }
+
+  @keyframes pulse{ 0%{transform:scale(1)} 50%{transform:scale(1.12)} 100%{transform:scale(1)} }
+.pg-weekly .timer.pulse { animation:pulse .45s ease-out; }
+
+  @keyframes pop{ 0%{transform:scale(.7);opacity:.3} 60%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }
+.pg-weekly .pop { animation:pop .5s cubic-bezier(.22,1,.36,1); display:inline-block; }
+.pg-weekly .toast { position:fixed; top:18px; right:18px; background:#202124; color:#fff; padding:11px 18px;
+          border-radius:10px; font-size:13px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,.25);
+          opacity:0; transform:translateY(-12px); pointer-events:none; z-index:9999;
+          transition:opacity .35s ease, transform .35s ease; }
+.pg-weekly .toast.on { opacity:1; transform:translateY(0); }
+@media(prefers-reduced-motion:reduce) {
+.pg-weekly .bar>i {transition:none}
+.pg-weekly .flash, .pg-weekly .fadeup, .pg-weekly .timer.pulse, .pg-weekly .pop {animation:none}
+.pg-weekly .toast {transition:none}
+}

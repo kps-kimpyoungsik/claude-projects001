@@ -1,0 +1,44 @@
+/* 원본: Issues.html — Apps Script 템플릿 그대로. 선택자만 .pg-issues 아래로 스코프됨.
+   수정하지 말 것: node tools/extract-styles.mjs 로 재생성된다. */
+.pg-issues {
+    --bg:#eef1f6; --card:#fff; --ink:#1f2430; --sub:#6b7280; --line:#e3e7ee;
+    --blue:#1a73e8; --navy:#16284a; --green:#137333; --gray:#9aa0a6; --amber:#e37400; --red:#c5221f;
+  }
+.pg-issues * {box-sizing:border-box}
+.pg-issues {font-family:'Malgun Gothic','Segoe UI',sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:16px;font-size:13px}
+.pg-issues .muted {color:var(--sub)}
+.pg-issues .top {background:var(--navy);color:#fff;border-radius:12px;padding:14px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.pg-issues .top h1 {font-size:17px;margin:0}
+.pg-issues .top .meta {font-size:11px;color:#c7d2e6}
+.pg-issues .btn {background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.pg-issues .btn:hover {background:rgba(255,255,255,.24)}
+.pg-issues .tabs {display:flex;gap:6px;flex-wrap:wrap;margin:14px 0}
+.pg-issues .tab {background:var(--card);border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;color:var(--sub);cursor:pointer;white-space:nowrap}
+.pg-issues .tab .n {margin-left:5px;background:#eceff4;border-radius:10px;padding:0 6px;font-size:11px}
+.pg-issues .tab.active {background:var(--blue);color:#fff;border-color:var(--blue)}
+.pg-issues .tab.active .n {background:rgba(255,255,255,.28);color:#fff}
+.pg-issues .list {display:flex;flex-direction:column;gap:10px}
+.pg-issues .card {background:var(--card);border:1px solid var(--line);border-left:5px solid var(--gray);border-radius:10px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.pg-issues .card.today {background:#fffceb;border-left-color:#e0a800;box-shadow:0 0 0 2px rgba(224,168,0,.28)}
+.pg-issues .card.new {border-left-color:var(--amber);box-shadow:0 0 0 2px rgba(227,116,0,.25)}
+.pg-issues .card.done {border-left-color:var(--green);opacity:.72}
+.pg-issues .card-h {display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer}
+.pg-issues .badge {font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px;background:#e8f0fe;color:var(--blue)}
+.pg-issues .badge.newtag {background:#fdecc8;color:var(--amber)}
+.pg-issues .badge.todaytag {background:#fff1b8;color:#8a6100}
+.pg-issues .no {font-size:11px;color:var(--sub);font-variant-numeric:tabular-nums}
+.pg-issues .name {font-weight:800;font-size:13.5px;flex:1;min-width:160px}
+.pg-issues .upd {font-size:10.5px;font-weight:700;color:#0f766e;background:#e6f7f5;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.pg-issues .upd.today {color:#8a6100;background:#fff1b8}
+.pg-issues .empty-v {color:#c3c8d1;font-style:italic}
+.pg-issues .status {display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sub)}
+.pg-issues .status input {width:15px;height:15px;cursor:pointer}
+.pg-issues .caret {color:var(--sub);font-size:10px;transition:transform .2s}
+.pg-issues .card.open .caret {transform:rotate(90deg)}
+.pg-issues .detail {display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.pg-issues .card.open .detail {display:block}
+.pg-issues .kv {display:grid;grid-template-columns:110px 1fr;gap:4px 10px;margin-bottom:6px;font-size:12.5px}
+.pg-issues .kv .k {color:var(--sub);font-weight:700}
+.pg-issues .kv .v {white-space:pre-wrap;word-break:break-word}
+.pg-issues .emptystate {text-align:center;color:var(--sub);padding:60px 0;font-size:13px}
+.pg-issues .errbox {background:#fdecea;color:var(--red);border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px}
