@@ -38,11 +38,16 @@ public class DatasetWriter {
     public DatasetWriter(JdbcTemplate jdbc,
                          @org.springframework.beans.factory.annotation.Autowired(required = false)
                          com.aegis.pm.dds.CoreView coreView,
-                         com.aegis.pm.pii.PiiVault pii) {
+                         com.aegis.pm.pii.PiiVault pii,
+                         org.springframework.beans.factory.ObjectProvider<com.aegis.pm.dds.DatasetPipeline> pipeline) {
         this.jdbc = jdbc;
         this.coreView = coreView;
         this.pii = pii;
+        this.pipeline = pipeline;
     }
+
+    /** 적재 직후 바인딩 → 패싯 → 자격 평가 (지연 조회 — 파이프라인이 표준·사전 서비스를 물고 있어 생성자 순환을 피한다) */
+    private final org.springframework.beans.factory.ObjectProvider<com.aegis.pm.dds.DatasetPipeline> pipeline;
 
     /**
      * 저장 직전 개인정보 처리 — P2 헤더 칸은 토큰, 어느 칸이든 P3 값은 차단 (pii 설계서 §5·§6).
@@ -69,9 +74,10 @@ public class DatasetWriter {
                 if (!kinds.containsKey(e.getKey())) e.setValue(pii.scrub(e.getValue()));
             }
         }
-        for (int i = 0; i < headers.size(); i++) {                 // 헤더가 사람 이름인 시트(인력 배치표)
+        for (int i = 0; i < headers.size(); i++) {                 // 헤더가 사람 이름인 시트(인력 배치표)·계정 표기
             String h = headers.get(i), s = pii.scrub(h);
             if (s.equals(h)) continue;
+            for (int k = 2; headers.contains(s); k++) s = pii.scrub(h) + "#" + k;   // 차단 헤더끼리 겹치면 값이 사라진다
             headers.set(i, s);
             for (Map<String, String> c : out) if (c.containsKey(h)) c.put(s, c.remove(h));
         }
@@ -113,6 +119,7 @@ public class DatasetWriter {
                                             min_v, max_v, sum_v)
                 VALUES (?,?,?,?,?,?,?,?,?)
                 """, colBatch);
+        pipeline.ifAvailable(p -> p.afterWrite(datasetId));   // 커밋 뒤 실행 — 실패해도 적재는 유지
         return rows.size();
     }
 

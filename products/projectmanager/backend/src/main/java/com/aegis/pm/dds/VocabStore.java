@@ -162,6 +162,25 @@ public class VocabStore {
      */
     @Transactional
     public Map<String, Object> match(String token) {
+        Map<String, Object> hit = find(token);
+        if (token == null || token.isBlank()) return null;
+        if (hit == null) {
+            recordMiss(token.trim());
+            return null;
+        }
+        jdbc.update("UPDATE vocab_term SET usage_count = usage_count + 1 WHERE term_id = ?", hit.get("term_id"));
+        return hit;
+    }
+
+    /**
+     * {@link #match} 와 같은 판정이되 <b>기록을 남기지 않는다</b> — 사용 횟수·미스 집계를 올리지 않는다.
+     * 자격 게이트처럼 같은 헤더를 몇 번이고 다시 평가하는 곳에서 쓴다(재평가마다 통계가 부풀면 승격 판단이 틀어진다).
+     */
+    public Map<String, Object> peek(String token) {
+        return find(token);
+    }
+
+    private Map<String, Object> find(String token) {
         if (token == null || token.isBlank()) return null;
         String t = token.trim();
 
@@ -190,11 +209,7 @@ public class VocabStore {
             conf = 0.75;
         }
 
-        if (hit == null) {
-            recordMiss(t);
-            return null;
-        }
-        jdbc.update("UPDATE vocab_term SET usage_count = usage_count + 1 WHERE term_id = ?", hit.get("term_id"));
+        if (hit == null) return null;
         hit.put("matched_by", by);
         hit.put("confidence", conf);
         return hit;

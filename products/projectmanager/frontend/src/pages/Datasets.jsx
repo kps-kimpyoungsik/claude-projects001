@@ -15,19 +15,20 @@ export default function Datasets() {
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [showQuarantined, setShowQuarantined] = useState(false);   // 자격 게이트(CQG)가 격리한 표 — 기본 숨김
   const fileRef = useRef(null);
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      setRows(await get('/datasets'));
+      setRows(await get(showQuarantined ? '/datasets?all=true' : '/datasets'));
     } catch (e) {
       setMsg({ type: 'err', text: e.message });
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [showQuarantined]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -112,6 +113,11 @@ export default function Datasets() {
           <button className="btn accent" onClick={() => fileRef.current?.click()} disabled={busy}>
             ⇧ 엑셀 업로드
           </button>
+          <label className="muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                 title="표지·범례·빈 양식처럼 자격 게이트가 격리한 표 — 지워진 것이 아니라 숨긴 것이다">
+            <input type="checkbox" checked={showQuarantined} onChange={(e) => setShowQuarantined(e.target.checked)} />
+            격리 포함
+          </label>
           <button className="btn" onClick={load} disabled={busy}>↻ 새로고침</button>
         </div>
       </div>
@@ -135,6 +141,12 @@ export default function Datasets() {
                   <span className={`caret${expanded === d.dataset_id ? ' open' : ''}`}>▶</span>
                   <b>{d.name}</b>
                   <span className="muted"> · {d.row_count}행 {d.col_count}열</span>
+                  {d.verdict && (
+                    <span className={`qbadge ${d.verdict}`} title={`${d.qualify_reason || ''}${d.override_by ? ' · 사람 판정' : ''}`}>
+                      {verdictLabel(d.verdict)} {d.score}
+                    </span>
+                  )}
+                  {d.domain && <span className="dchip">{d.domain}</span>}
                 </div>
                 <div className="ds-a">
                   <span className="muted src">{d.source_file}</span>
@@ -152,7 +164,7 @@ export default function Datasets() {
                     <div className="scroll">
                       <table>
                         <thead>
-                          <tr><th>#</th><th>컬럼</th><th>추론 타입</th><th className="num">고유값</th>
+                          <tr><th>#</th><th>컬럼</th><th>추론 타입</th><th>의미</th><th className="num">고유값</th>
                               <th className="num">빈값</th><th>최소</th><th>최대</th><th className="num">합계</th></tr>
                         </thead>
                         <tbody>
@@ -161,6 +173,7 @@ export default function Datasets() {
                               <td className="num">{c.col_no + 1}</td>
                               <td>{c.name}</td>
                               <td><span className={`ty ${c.data_type}`}>{typeLabel(c.data_type)}</span></td>
+                              <td>{roleLabel(c.role)}</td>
                               <td className="num">{c.distinct_n}</td>
                               <td className="num">{c.null_n}</td>
                               <td>{c.min_v || ''}</td>
@@ -182,5 +195,7 @@ export default function Datasets() {
   );
 }
 
+export const verdictLabel = (v) => ({ QUALIFIED: '정식', PROVISIONAL: '보완 필요', REJECTED: '격리' }[v] || v);
+export const roleLabel = (r) => ({ id: '식별자', time: '시간', status: '상태', measure: '측정값', person: '사람', text: '텍스트' }[r] || '');
 export const typeLabel = (t) => ({ number: '숫자', date: '날짜', category: '범주', text: '텍스트' }[t] || t);
 export const fmt = (n) => (Number(n) || 0).toLocaleString('ko-KR');

@@ -70,14 +70,31 @@ class PiiFlowTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper http;   // HTTP 응답과 같은 매퍼
 
-    /** 안전 검사 — 이 테스트가 실제 업로드 폴더에 봉인 파일·보류 폴더를 만들면 실패 (2026-09-24 사고 재발 방지) */
+    /**
+     * 안전 검사 — 이 테스트 전후로 실제 data/uploads · data/_backup 의 파일 목록·크기가 같아야 한다
+     * (2026-09-24 사고 재발 방지). ".sealed 가 있으면 실패" 로 두면 운영 전환 뒤 정상 봉인 파일에 오탐한다(실측).
+     */
+    private static String realSnapshot;
+
+    private static String snapshot() throws Exception {
+        StringBuilder sb = new StringBuilder();
+        for (Path dir : List.of(java.nio.file.Paths.get("data", "uploads"), java.nio.file.Paths.get("data", "_backup"))) {
+            if (!Files.isDirectory(dir)) { sb.append(dir).append(":none;"); continue; }
+            try (var w = Files.walk(dir)) {
+                for (Path p : w.sorted().toList()) sb.append(p).append('=').append(Files.isRegularFile(p) ? Files.size(p) : -1).append(';');
+            }
+        }
+        return sb.toString();
+    }
+
+    @org.junit.jupiter.api.BeforeAll
+    static void realDataBefore() throws Exception {
+        realSnapshot = snapshot();
+    }
+
     @org.junit.jupiter.api.AfterAll
     static void realDataUntouched() throws Exception {
-        Path real = java.nio.file.Paths.get("data", "uploads");
-        if (Files.isDirectory(real)) try (var s = Files.list(real)) {
-            assertEquals(0, s.filter(p -> p.toString().endsWith(".sealed")).count(), "테스트가 실제 data/uploads 를 봉인했다");
-        }
-        assertFalse(Files.exists(java.nio.file.Paths.get("data", "_backup", "pre-seal")), "테스트가 실제 보류 폴더를 만들었다");
+        assertEquals(realSnapshot, snapshot(), "테스트가 실제 data/uploads · data/_backup 을 바꿨다");
     }
 
     @BeforeEach

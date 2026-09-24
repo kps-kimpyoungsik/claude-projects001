@@ -88,6 +88,18 @@ public final class PiiRegistry {
                     + "|\\b[MSRODG]\\d{8}\\b"                                   // 여권
                     + "|\\b\\d{4}-\\d{4}-\\d{4}-\\d{4}\\b");                    // 카드
 
+    /**
+     * 계정 비밀정보 — "pwd : …" · "password=…" · "비밀번호: …". 비밀번호는 암호화가 아니라 <b>적재하지 않는다</b>(지침 G-3).
+     * 실측 2026-09-24: 업로드된 "서버정보" 시트에 서버 계정·비밀번호가 평문으로 적재돼 API 로 조회되고 있었다.
+     */
+    private static final Pattern SECRET = Pattern.compile(
+            "(pwd|passwd|password|passcode|pass\\s*word|비밀번호|비번|\\bpw\\b)\\s*[:=]", Pattern.CASE_INSENSITIVE);
+    public static final String SECRET_BLOCKED = "[비밀정보 차단]";
+
+    public static boolean isSecret(String value) {
+        return value != null && SECRET.matcher(value).find();
+    }
+
     public static boolean isP3(String value) {
         return value != null && P3.matcher(value).find();
     }

@@ -445,3 +445,33 @@ CREATE TABLE IF NOT EXISTS pii_vault (
   enc         VARCHAR(100000) NOT NULL,      -- payload 칸과 같은 상한 — 값이 길어도 거절하지 않는다
   created_at  VARCHAR(20) NOT NULL
 );
+
+-- DDS Phase 3 패싯 (01_설계서 §3·§4.1) — 1단계: domain(분야) · role(컬럼 의미) · context(맥락)
+--   source=human 은 자동 재분류가 덮지 않는다
+CREATE TABLE IF NOT EXISTS dataset_facet (
+  facet_id    VARCHAR(80) PRIMARY KEY,       -- {dataset_id}|{axis}|{col_name 또는 value}
+  axis        VARCHAR(20) NOT NULL,          -- domain | area | role | context | topic
+  facet_value VARCHAR(300) NOT NULL,         -- `value` 는 H2 2.x 예약어
+  target_type VARCHAR(20) NOT NULL,          -- dataset | column
+  dataset_id  VARCHAR(60) NOT NULL,
+  col_name    VARCHAR(200),
+  confidence  DOUBLE PRECISION,
+  source      VARCHAR(10),                   -- rule | stat | human
+  evidence    VARCHAR(1000),
+  updated_at  VARCHAR(20)
+);
+CREATE INDEX IF NOT EXISTS idx_facet_lookup ON dataset_facet (axis, facet_value);
+CREATE INDEX IF NOT EXISTS idx_facet_target ON dataset_facet (dataset_id, target_type);
+
+-- DDS Phase 4 CQG 자격 게이트 (06 §2) — REJECTED 는 삭제가 아니라 격리(목록에서 숨김, 행은 그대로)
+CREATE TABLE IF NOT EXISTS dataset_qualification (
+  dataset_id   VARCHAR(60) PRIMARY KEY,
+  verdict      VARCHAR(20) NOT NULL,         -- QUALIFIED | PROVISIONAL | REJECTED
+  score        INTEGER NOT NULL,
+  breakdown    VARCHAR(2000) NOT NULL,       -- 8요소 점수 JSON — 왜 이 점수인지
+  reason       VARCHAR(500),
+  quarantined  BOOLEAN DEFAULT FALSE,
+  override_by  VARCHAR(50),                  -- 사람이 뒤집었으면 — 자동 재평가가 덮지 않는다
+  override_at  VARCHAR(20),
+  evaluated_at VARCHAR(20)
+);

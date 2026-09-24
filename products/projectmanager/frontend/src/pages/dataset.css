@@ -126,3 +126,11 @@
   float: right; font-weight: 600; font-size: 10.5px; color: var(--accentDk);
   background: var(--accentLt); border-radius: 8px; padding: 1px 7px;
 }
+
+/* 자격 게이트(CQG) 판정 · 분야 */
+.pg-ds .qbadge { margin-left: 8px; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  border: 1px solid transparent; }
+.pg-ds .qbadge.QUALIFIED { color: #0f7b3a; background: #e3f5ea; border-color: #b8e2c6; }
+.pg-ds .qbadge.PROVISIONAL { color: #8a5a00; background: #fff4dc; border-color: #f1d9a3; }
+.pg-ds .qbadge.REJECTED { color: #6b6b6b; background: #eeeeee; border-color: #d6d6d6; }
+.pg-ds .dchip { margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 11px; color: #3558a8; background: #e8eefb; }

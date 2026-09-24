@@ -108,9 +108,15 @@ public class PiiMigrationService {
         int rows = 0;
         for (String ds : jdbc.queryForList("SELECT dataset_id FROM dataset", String.class)) {
             Map<String, String> renamed = new LinkedHashMap<>();
-            for (String h : jdbc.queryForList("SELECT name FROM dataset_column WHERE dataset_id = ?", String.class, ds)) {
+            List<String> headers = jdbc.queryForList("SELECT name FROM dataset_column WHERE dataset_id = ?", String.class, ds);
+            java.util.Set<String> taken = new java.util.HashSet<>(headers);
+            for (String h : headers) {
                 String s = vault.scrub(h);
-                if (!s.equals(h)) renamed.put(h, s);
+                if (s.equals(h)) continue;
+                String u = s;   // "[비밀정보 차단]" 이 두 번 나오면 payload 키가 겹쳐 값이 사라진다 — 번호를 붙인다
+                for (int k = 2; taken.contains(u); k++) u = s + "#" + k;
+                taken.add(u);
+                renamed.put(h, u);
             }
             renamed.forEach((h, s) -> {
                 jdbc.update("UPDATE dataset_column SET name = ?, min_v = NULL, max_v = NULL WHERE dataset_id = ? AND name = ?", s, ds, h);
@@ -123,6 +129,8 @@ public class PiiMigrationService {
                 String k = PiiRegistry.kindOfHeader(h);
                 if (k != null) kinds.put(h, k);
             }
+            // 값이 바뀐 컬럼의 min/max 에는 바뀌기 전 원문(비밀번호·이름)이 남아 있다 — 함께 지운다
+            java.util.Set<String> changedCols = new java.util.HashSet<>(kinds.keySet());
             for (Map<String, Object> r : jdbc.queryForList(
                     "SELECT row_no, payload FROM dataset_row WHERE dataset_id = ?", ds)) {
                 Object no = r.containsKey("ROW_NO") ? r.get("ROW_NO") : r.get("row_no");
@@ -136,14 +144,14 @@ public class PiiMigrationService {
                     String v = e.getValue();
                     String k = kinds.get(e.getKey());
                     String t = k != null ? vault.tokenize(k, v) : vault.scrub(v);
-                    if (v != null && !v.equals(t)) { e.setValue(t); dirty = true; }
+                    if (v != null && !v.equals(t)) { e.setValue(t); dirty = true; changedCols.add(e.getKey()); }
                 }
                 if (dirty) {
                     jdbc.update("UPDATE dataset_row SET payload = ? WHERE dataset_id = ? AND row_no = ?", write(row), ds, no);
                     rows++;
                 }
             }
-            for (String h : kinds.keySet()) {
+            for (String h : changedCols) {
                 jdbc.update("UPDATE dataset_column SET min_v = NULL, max_v = NULL WHERE dataset_id = ? AND name = ?", ds, h);
             }
         }

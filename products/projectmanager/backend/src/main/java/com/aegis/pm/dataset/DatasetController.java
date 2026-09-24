@@ -28,9 +28,10 @@ public class DatasetController {
         this.dashboards = dashboards;
     }
 
+    /** ?all=true 면 자격 게이트가 격리한 표까지 */
     @GetMapping
-    public List<Map<String, Object>> list() {
-        return dashboards.datasets();
+    public List<Map<String, Object>> list(@org.springframework.web.bind.annotation.RequestParam(defaultValue = "false") boolean all) {
+        return dashboards.datasets(all);
     }
 
     @GetMapping("/{id}")

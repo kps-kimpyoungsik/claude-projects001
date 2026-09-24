@@ -62,7 +62,20 @@ public class DashboardService {
     // ── 데이터셋 ────────────────────────────────────────────────────────────
 
     public List<Map<String, Object>> datasets() {
-        return lower(jdbc.queryForList("SELECT * FROM dataset ORDER BY created_at DESC, dataset_id DESC"));
+        return datasets(false);
+    }
+
+    /**
+     * 목록 — 자격 판정(CQG)을 함께 싣는다. 격리(REJECTED)된 표는 기본으로 숨긴다(삭제가 아니다, 06 §2.3).
+     * 아직 평가 전인 표(verdict NULL)는 보인다 — 모르는 것을 숨기지 않는다.
+     */
+    public List<Map<String, Object>> datasets(boolean includeQuarantined) {
+        return lower(jdbc.queryForList("""
+                SELECT d.*, q.verdict, q.score, q.reason AS qualify_reason, q.quarantined, q.override_by,
+                       (SELECT MAX(f.facet_value) FROM dataset_facet f WHERE f.dataset_id = d.dataset_id AND f.axis = 'domain') AS domain
+                  FROM dataset d LEFT JOIN dataset_qualification q ON q.dataset_id = d.dataset_id
+                """ + (includeQuarantined ? "" : " WHERE q.quarantined IS NULL OR q.quarantined = FALSE")
+                + " ORDER BY d.created_at DESC, d.dataset_id DESC"));
     }
 
     public Map<String, Object> dataset(String id) {
@@ -73,8 +86,10 @@ public class DashboardService {
 
     public List<Map<String, Object>> columns(String id) {
         return lower(jdbc.queryForList(
-                "SELECT col_no, name, data_type, distinct_n, null_n, min_v, max_v, sum_v"
-                        + " FROM dataset_column WHERE dataset_id = ? ORDER BY col_no", id));
+                "SELECT c.col_no, c.name, c.data_type, c.distinct_n, c.null_n, c.min_v, c.max_v, c.sum_v,"
+                        + " (SELECT MAX(f.facet_value) FROM dataset_facet f WHERE f.dataset_id = c.dataset_id AND f.axis = 'role'"
+                        + "   AND f.col_name = c.name) AS role"
+                        + " FROM dataset_column c WHERE c.dataset_id = ? ORDER BY c.col_no", id));
     }
 
     public List<Map<String, String>> rows(String id, int limit) {
@@ -105,6 +120,9 @@ public class DashboardService {
         jdbc.update("DELETE FROM dashboard WHERE kind = 'dataset' AND dataset_id = ?", id);
         jdbc.update("DELETE FROM dataset_row WHERE dataset_id = ?", id);
         jdbc.update("DELETE FROM dataset_column WHERE dataset_id = ?", id);
+        jdbc.update("DELETE FROM dataset_facet WHERE dataset_id = ?", id);          // 고아로 남지 않게
+        jdbc.update("DELETE FROM dataset_qualification WHERE dataset_id = ?", id);
+        jdbc.update("DELETE FROM dataset_binding WHERE dataset_id = ?", id);
         int n = jdbc.update("DELETE FROM dataset WHERE dataset_id = ?", id);
         return n > 0 ? Map.of("ok", true, "deleted", id)
                 : Map.of("ok", false, "error", "없는 데이터셋입니다: " + id);

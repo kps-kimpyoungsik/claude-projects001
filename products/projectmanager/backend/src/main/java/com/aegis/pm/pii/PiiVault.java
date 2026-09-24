@@ -136,6 +136,7 @@ public class PiiVault {
      * 2자 이름은 자유 텍스트에서 찾지 않는다(일반 단어와 겹친다 — 설계서 §8 수용 제약).
      */
     public String scrub(String text) {
+        if (text != null && PiiRegistry.isSecret(text)) return PiiRegistry.SECRET_BLOCKED;   // 계정 비밀정보는 통째로 (G-3)
         if (!enabled() || text == null || text.length() < 3) return text;
         java.util.Set<String> known = people();
         if (known.isEmpty()) return text;
