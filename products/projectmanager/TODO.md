@@ -434,7 +434,8 @@ TODO 에 `DB에서 수정한 IA 값이 있으면 함께 사라진다` 고 적혀
 - ✅ 2026-09-24 `dataset_role`→`dataset_canon` rename 완료(설계 06·01·02, 컬럼 `role`→`canon`). 초기 커밋 `e4dab58` 완료(P0 #1 — `.gitignore` 줄끝 주석으로 `backend/data/`·`.env` 무력화돼 있던 것 교정 포함). 실제 PostgreSQL 검증은 원격 공유 DB라 승인 필요.
 - KH 등재 대기 4건: ①회수기 래퍼만 종료·자식 고아 생존(**3회 재현**) ②ASCII 골격 복원
   ③전송 경로 인코딩(HTTP 200 ≠ 인코딩 정상) ④VPN 어댑터 Private 프로필 방화벽.
-- `PM_API_KEY` 미설정 — tailnet 노출 상태에서 쓰기 API(복원·삭제·전량교체) 무인증.
+- ✅ 2026-09-24 `PM_API_KEY` 설정 — `backend/.env`·`frontend/.env.local`(둘 다 git 제외). `start.sh`/`start.cmd` 가 `.env` 를 안 읽어 키가 앱에 못 가던 것 교정(`ce9c1b6`). 메모리 DB 실측: 키 없음 401·틀린 키 401·맞는 키 200·GET 200. **다음 기동부터 적용**(현재 8080 꺼져 있음). 키는 번들에 박히므로 UI 를 여는 사람은 볼 수 있다 — 사용자 구분이 아니라 무단 curl 차단용.
+- ⛔ push 보류 — 원격 `claude-projects001` 이 **공개**(비인증 API 200)이고, `origin/main..main` 47건에 타 프로젝트·README 인프라 정보(tailnet IP·SSH)가 섞여 있다. 비공개 저장소를 따로 두거나 원격을 비공개로 바꾼 뒤 진행.
 - `vite --host` 비영속(재기동 시 로컬 전용 복귀). 영구화하려면 `vite.config.js` 에 `host: true`.
 - 생성자 모호성 실수 2회(`MemoryGuardFilter`·`FilenameRepair`) — 3회차 시 error_kb 등재.
 - 메모리 근본: 브라우저 4.7GB · VS Code 3.6GB (사용자 영역, JVM 측 조치는 완료).
