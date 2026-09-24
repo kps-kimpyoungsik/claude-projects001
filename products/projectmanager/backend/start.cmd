@@ -15,4 +15,6 @@ REM  떴다. jvmArguments 가 유일하게 앱에 전달된다. 이 플래그는
 REM  JVM 은 어차피 2개였다(실측: 양쪽 구성 모두 Maven 312MB + 앱 280~300MB). 즉 잃는 것은 없다.
 REM  JVM 1개로 줄이려면 mvnw package 후 java <플래그> -jar target/*.jar 로 직접 띄운다.
 cd /d "%~dp0"
+REM .env 가 있으면 환경변수로 올린다 (PM_API_KEY 등 - 명령행/git 에 비밀을 두지 않는다)
+if exist .env for /f "usebackq eol=# tokens=1,* delims==" %%a in (".env") do set "%%a=%%b"
 .\mvnw.cmd "-Dspring-boot.run.jvmArguments=-XX:MaxRAMPercentage=15.0 -XX:InitialRAMPercentage=2.0 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=25 -XX:G1PeriodicGCInterval=60000 -XX:G1PeriodicGCSystemLoadThreshold=0" spring-boot:run

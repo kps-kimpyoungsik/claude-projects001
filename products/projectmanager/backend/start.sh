@@ -16,4 +16,6 @@
 #  JVM 1개로 줄이려면 mvnw package 후 java <플래그> -jar target/*.jar 로 직접 띄운다.
 set -euo pipefail
 cd "$(dirname "$0")"
+# .env 가 있으면 환경변수로 올린다 (PM_API_KEY 등 — 명령행·git 에 비밀을 두지 않는다)
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
 exec ./mvnw "-Dspring-boot.run.jvmArguments=-XX:MaxRAMPercentage=15.0 -XX:InitialRAMPercentage=2.0 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=25 -XX:G1PeriodicGCInterval=60000 -XX:G1PeriodicGCSystemLoadThreshold=0" spring-boot:run
