@@ -75,15 +75,40 @@ public final class RefinePlanner {
         return ops;
     }
 
-    /** 계획 중 applies=true 인 것만 적용한 새 행 목록 — 원본은 건드리지 않는다 */
+    /** 사람 결정 — true 면 그 (op, 열, 원본 행)의 정제를 하지 않는다 */
+    @FunctionalInterface
+    public interface Keep {
+        boolean skip(String op, String col, int row);
+        Keep NONE = (op, col, row) -> false;
+    }
+
+    /** 결정 키 "op|열|행" — 열 "" = 모든 열, 행 -1 = 모든 행 */
+    public static Keep keep(List<String> keys) {
+        Set<String> k = new HashSet<>(keys);
+        if (k.isEmpty()) return Keep.NONE;
+        return (op, col, row) -> {
+            String c = col == null ? "" : col;
+            return k.contains(op + "|" + c + "|" + row) || k.contains(op + "|" + c + "|-1")
+                    || k.contains(op + "||" + row) || k.contains(op + "||-1");
+        };
+    }
+
     public static Map<String, Object> apply(List<String> headers, List<Map<String, String>> rows, List<Op> ops) {
+        return apply(headers, rows, ops, Keep.NONE);
+    }
+
+    /**
+     * 계획 중 applies=true 인 것만 적용한 새 행 목록 — 원본은 건드리지 않는다.
+     * 결과의 "traces" 는 사라지거나 바뀐 값 전부(원본 행 번호 · 이전 값 → 이후 값).
+     */
+    public static Map<String, Object> apply(List<String> headers, List<Map<String, String>> rows, List<Op> ops, Keep keep) {
         Set<String> drop = new HashSet<>(), nulls = new HashSet<>(), trim = new HashSet<>(), serial = new HashSet<>(),
                 fmt = new HashSet<>(), unformat = new HashSet<>();
         boolean dedupe = false;
         for (Op o : ops) {
             if (!o.applies()) continue;
             switch (o.op()) {
-                case "DROP_EMPTY_COLUMN" -> drop.add(o.column());
+                case "DROP_EMPTY_COLUMN" -> { if (!keep.skip(o.op(), o.column(), -1)) drop.add(o.column()); }
                 case "NORMALIZE_NULL" -> nulls.add(o.column());
                 case "TRIM_SPACE" -> trim.add(o.column());
                 case "DATE_SERIAL_TO_ISO" -> serial.add(o.column());
@@ -95,27 +120,44 @@ public final class RefinePlanner {
         }
         List<String> outHeaders = headers.stream().filter(h -> !drop.contains(h)).toList();
         List<Map<String, String>> out = new ArrayList<>();
+        List<TraceStore.Trace> traces = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        for (Map<String, String> r : rows) {
+        for (int i = 0; i < rows.size(); i++) {
+            Map<String, String> r = rows.get(i);
             Map<String, String> c = new LinkedHashMap<>();
             for (String h : outHeaders) {
                 String v = r.get(h);
                 if (v == null) continue;
-                if (trim.contains(h)) v = v.trim().replaceAll("\\s{2,}", " ");
-                if (nulls.contains(h) && DataProfiler.isNullish(v)) continue;
-                if (serial.contains(h) && isSerial(v)) v = LocalDate.of(1899, 12, 30).plusDays((long) DataProfiler.parse(v)).toString();
-                if (fmt.contains(h)) { Matcher m = DATE.matcher(v.trim()); if (m.matches()) v = iso(m); }
-                if (unformat.contains(h) && DataProfiler.isNumber(v)) v = v.trim().replace(",", "").replace("%", "");
+                if (trim.contains(h) && !keep.skip("TRIM_SPACE", h, i)) v = step(traces, "TRIM_SPACE", i, h, v, v.trim().replaceAll("\\s{2,}", " "));
+                if (nulls.contains(h) && DataProfiler.isNullish(v) && !keep.skip("NORMALIZE_NULL", h, i)) {
+                    traces.add(new TraceStore.Trace("REFINE", "NORMALIZE_NULL", i, h, v, null));
+                    continue;
+                }
+                if (serial.contains(h) && isSerial(v) && !keep.skip("DATE_SERIAL_TO_ISO", h, i))
+                    v = step(traces, "DATE_SERIAL_TO_ISO", i, h, v, LocalDate.of(1899, 12, 30).plusDays((long) DataProfiler.parse(v)).toString());
+                if (fmt.contains(h) && !keep.skip("DATE_FORMAT_UNIFY", h, i)) { Matcher m = DATE.matcher(v.trim()); if (m.matches()) v = step(traces, "DATE_FORMAT_UNIFY", i, h, v, iso(m)); }
+                if (unformat.contains(h) && DataProfiler.isNumber(v) && !keep.skip("NUMBER_UNFORMAT", h, i))
+                    v = step(traces, "NUMBER_UNFORMAT", i, h, v, v.trim().replace(",", "").replace("%", ""));
                 if (!v.isEmpty()) c.put(h, v);
             }
             if (c.isEmpty()) continue;
-            if (dedupe && !seen.add(c.toString())) continue;
+            if (dedupe && !seen.add(c.toString()) && !keep.skip("DEDUPE_ROWS", null, i)) {
+                traces.add(new TraceStore.Trace("REFINE", "DEDUPE_ROWS", i, null, r.toString(), null));
+                continue;
+            }
             out.add(c);
         }
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("headers", outHeaders);
         res.put("rows", out);
+        res.put("traces", traces);
         return res;
+    }
+
+    /** 값이 실제로 바뀐 경우만 이력에 남긴다 */
+    private static String step(List<TraceStore.Trace> traces, String op, int row, String col, String before, String after) {
+        if (!after.equals(before)) traces.add(new TraceStore.Trace("REFINE", op, row, col, before, after));
+        return after;
     }
 
     static List<String> column(List<Map<String, String>> rows, String h) {

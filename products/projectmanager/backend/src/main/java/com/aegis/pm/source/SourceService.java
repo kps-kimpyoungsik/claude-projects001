@@ -38,13 +38,16 @@ public class SourceService {
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter ID_TS = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSSS");
-    private static final Path STORE = Paths.get("data", "sources");
+    /** 원본 보관 폴더 — 설정값이다(업로드와 같은 이유, pm.pii.sources-dir) */
+    private final Path STORE;
     private static final int BATCH = 1000;
 
     private final JdbcTemplate jdbc;
     private final com.aegis.pm.pii.PiiVault pii;
 
-    public SourceService(JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii) {
+    public SourceService(JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii,
+                         @org.springframework.beans.factory.annotation.Value("${pm.pii.sources-dir:data/sources}") String sourcesDir) {
+        this.STORE = Paths.get(sourcesDir);
         this.jdbc = jdbc;
         this.pii = pii;
     }

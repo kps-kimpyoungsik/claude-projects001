@@ -39,12 +39,16 @@ public class DatasetWriter {
                          @org.springframework.beans.factory.annotation.Autowired(required = false)
                          com.aegis.pm.dds.CoreView coreView,
                          com.aegis.pm.pii.PiiVault pii,
-                         org.springframework.beans.factory.ObjectProvider<com.aegis.pm.dds.DatasetPipeline> pipeline) {
+                         org.springframework.beans.factory.ObjectProvider<com.aegis.pm.dds.DatasetPipeline> pipeline,
+                         com.aegis.pm.engine.TraceStore traces) {
         this.jdbc = jdbc;
         this.coreView = coreView;
         this.pii = pii;
         this.pipeline = pipeline;
+        this.traces = traces;
     }
+
+    private final com.aegis.pm.engine.TraceStore traces;
 
     /** 적재 직후 바인딩 → 패싯 → 자격 평가 (지연 조회 — 파이프라인이 표준·사전 서비스를 물고 있어 생성자 순환을 피한다) */
     private final org.springframework.beans.factory.ObjectProvider<com.aegis.pm.dds.DatasetPipeline> pipeline;
@@ -61,10 +65,16 @@ public class DatasetWriter {
         }
         List<Map<String, String>> out = new ArrayList<>(rows.size());
         int blocked = 0;
-        for (Map<String, String> r : rows) {                       // 1차: P3 차단 · P2 칸 토큰 (금고에 사람이 올라간다)
-            Map<String, String> c = new LinkedHashMap<>(r);
+        List<com.aegis.pm.engine.TraceStore.Trace> lost = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {                    // 1차: P3 차단 · P2 칸 토큰 (금고에 사람이 올라간다)
+            Map<String, String> c = new LinkedHashMap<>(rows.get(i));
             for (var e : c.entrySet()) {
-                if (com.aegis.pm.pii.PiiRegistry.isP3(e.getValue())) { e.setValue(P3_BLOCKED); blocked++; }
+                if (com.aegis.pm.pii.PiiRegistry.isP3(e.getValue())) {
+                    e.setValue(P3_BLOCKED);
+                    blocked++;
+                    // 값은 이력에도 남기지 않는다 — 어디서 차단됐는지만 (지침 G-3)
+                    lost.add(new com.aegis.pm.engine.TraceStore.Trace("INGEST", "PII_BLOCKED", i, e.getKey(), null, P3_BLOCKED));
+                }
             }
             kinds.forEach((h, k) -> c.computeIfPresent(h, (key, v) -> pii.tokenize(k, v)));
             out.add(c);
@@ -82,6 +92,7 @@ public class DatasetWriter {
             for (Map<String, String> c : out) if (c.containsKey(h)) c.put(s, c.remove(h));
         }
         if (blocked > 0) log.warn("[개인정보] {} — 고유식별정보로 보이는 셀 {}개를 저장하지 않았습니다 (지침 G-3)", datasetId, blocked);
+        traces.add(datasetId, null, lost);
         return out;
     }
 
@@ -91,6 +102,8 @@ public class DatasetWriter {
                      List<String> headers, List<Map<String, String>> rows) {
         String now = LocalDateTime.now().format(TS);
         headers = new ArrayList<>(headers);   // protect 가 이름 헤더를 토큰으로 바꾼다
+        // 이전 적재·정제 이력은 새 내용과 맞지 않는다 — 지운다. 사람의 직접 수정(EDIT) 이력은 남긴다
+        jdbc.update("DELETE FROM refine_trace WHERE dataset_id = ? AND stage <> 'EDIT'", datasetId);
         rows = protect(datasetId, headers, rows);
 
         jdbc.update("DELETE FROM dataset_row WHERE dataset_id = ?", datasetId);

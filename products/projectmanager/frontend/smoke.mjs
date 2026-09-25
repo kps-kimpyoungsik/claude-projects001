@@ -64,7 +64,9 @@ for (const route of routes) {
   // 브라우저 fetch → 백엔드로 직결 (vite 프록시 대체)
   dom.window.fetch = (url, init) => fetch(url.startsWith('/') ? API + url : url, init);
 
-  dom.window.eval(bundle);
+  // 실제 브라우저는 번들을 type="module" 로 읽어 최상위 이름이 모듈 안에 갇힌다. 그냥 eval 하면 전역이 되어
+  // 레거시 스크립트의 전역 함수(M 등)를 덮는다 — 빌드마다 압축 이름이 바뀌어 간헐적으로 틀린 화면을 PASS 했다(실측 2026-09-25)
+  dom.window.eval(`(function(){${bundle}\n})();`);
   await new Promise((r) => setTimeout(r, 2500));
 
   // 스크립트 원문이 아니라 실제 렌더 영역만 본다
@@ -72,6 +74,9 @@ for (const route of routes) {
   const text = (view?.textContent || '').replace(/\s+/g, ' ').trim();
   const need = EXPECT[route];
   let ok = view && text.length > 80 && (!need || text.includes(need));
+  // 레거시 화면은 틀이 먼저 그려져 제목만으로는 PASS 한다 — 대표 수치가 초기값(–)에서 바뀌었는지까지 본다
+  const ov = dom.window.document.getElementById('ovVal');
+  if (ok && ov && !/\d/.test(ov.textContent)) { ok = false; errors.push(`대표 수치가 초기값 그대로: "${ov.textContent}"`); }
 
   // 대시보드는 위젯이 실제로 그려졌는지 + 겹침이 불가능한 배치인지까지 본다.
   // 흐름 배치(span)만 쓰면 두 위젯이 같은 칸을 차지할 수 없다 — 좌표 배치가 섞이면 실패한다.

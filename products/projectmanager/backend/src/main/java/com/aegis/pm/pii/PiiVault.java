@@ -250,6 +250,15 @@ public class PiiVault {
         return sealed;
     }
 
+    /** 봉인 원본을 임시 평문으로 푼다 — 호출자가 다 쓰면 지운다. 개인키 없는 서버는 거절 (헤더 재지정 재적재용) */
+    public Path openStored(Path sealed, Path tmp) throws java.io.IOException {
+        if (!canDecrypt()) throw new IllegalStateException("개인키 없음 — 봉인 원본을 열 수 없습니다 (PM_PII_PRIVATE_KEY)");
+        try (var in = Files.newInputStream(sealed); var out = Files.newOutputStream(tmp)) {
+            PiiCrypto.openFile(privateKey, in, out);
+        }
+        return tmp;
+    }
+
     private static java.security.MessageDigest sha256() {
         try {
             return java.security.MessageDigest.getInstance("SHA-256");

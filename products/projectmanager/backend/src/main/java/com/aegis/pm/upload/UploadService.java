@@ -39,7 +39,8 @@ public class UploadService {
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter ID_TS = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
-    private static final Path STORE = Paths.get("data", "uploads");
+    /** 원본 보관 폴더 — 설정값이다. 고정 경로였을 때 업로드 테스트가 실제 data/uploads 에 썼다 지웠다(실측 2026-09-25) */
+    private final Path STORE;
 
     private final WbsImportService wbsImporter;
     private final IaImportService iaImporter;
@@ -49,7 +50,9 @@ public class UploadService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(UploadService.class);
 
     public UploadService(WbsImportService wbsImporter, IaImportService iaImporter,
-                         DatasetIngestService datasetIngest, JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii) {
+                         DatasetIngestService datasetIngest, JdbcTemplate jdbc, com.aegis.pm.pii.PiiVault pii,
+                         @org.springframework.beans.factory.annotation.Value("${pm.pii.uploads-dir:data/uploads}") String uploadsDir) {
+        this.STORE = Paths.get(uploadsDir);
         this.pii = pii;
         this.wbsImporter = wbsImporter;
         this.iaImporter = iaImporter;

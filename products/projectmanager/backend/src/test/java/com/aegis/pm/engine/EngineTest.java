@@ -122,4 +122,35 @@ class EngineTest {
         assertFalse(r2.get(3).containsKey("B"), "결측 표기 '-' → 빈 값");
         assertEquals("1500", r2.get(5).get("C"));
     }
+
+    @Test
+    void 정제는_사라진_값을_전부_남기고_사람_결정을_따른다() {
+        List<String> h = List.of("A", "B");
+        List<Map<String, String>> rows = new ArrayList<>();
+        for (int i = 0; i < 10; i++) rows.add(new LinkedHashMap<>(Map.of("A", "K" + i, "B", i == 2 ? "-" : String.valueOf(i))));
+        rows.add(new LinkedHashMap<>(rows.get(0)));   // 행 10 = 행 0 중복
+        List<RefinePlanner.Op> ops = RefinePlanner.plan(h, rows, Map.of("A", "id", "B", "measure"));
+
+        Map<String, Object> out = RefinePlanner.apply(h, rows, ops);
+        @SuppressWarnings("unchecked")
+        List<TraceStore.Trace> t = (List<TraceStore.Trace>) out.get("traces");
+        assertTrue(t.contains(new TraceStore.Trace("REFINE", "NORMALIZE_NULL", 2, "B", "-", null)), t.toString());
+        assertTrue(t.stream().anyMatch(x -> x.op().equals("DEDUPE_ROWS") && x.rowRef() == 10 && x.before() != null), "지운 행은 내용째 남는다");
+
+        // 사람이 "행 2의 '-'는 지우지 마라" + "행 10 중복은 남겨라" 결정 → 둘 다 돌아온다
+        Map<String, Object> kept = RefinePlanner.apply(h, rows, ops, RefinePlanner.keep(List.of("NORMALIZE_NULL|B|2", "DEDUPE_ROWS||10")));
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> r2 = (List<Map<String, String>>) kept.get("rows");
+        assertEquals(11, r2.size());
+        assertEquals("-", r2.get(2).get("B"));
+        assertTrue(((List<?>) kept.get("traces")).isEmpty());
+    }
+
+    @Test
+    void 묶음은_이름이_비슷한_양식끼리() {
+        assertEquals(1.0, EngineService.jaccard(java.util.Set.of("a", "b"), java.util.Set.of("a", "b")));
+        assertTrue(EngineService.jaccard(java.util.Set.of("a", "b", "c"), java.util.Set.of("a", "b", "d")) >= EngineService.GROUP_SIMILARITY);
+        assertTrue(EngineService.jaccard(java.util.Set.of("a", "b", "c"), java.util.Set.of("x", "y", "c")) < EngineService.GROUP_SIMILARITY);
+        assertEquals(0.0, EngineService.jaccard(java.util.Set.of(), java.util.Set.of()), "헤더 없는 표끼리는 묶지 않는다");
+    }
 }

@@ -71,10 +71,12 @@ public class QualificationService {
         Map<String, Object> bd = new LinkedHashMap<>();
         String verdict, reason;
         int score;
-        if (rows < 3 || valid < 2) {
+        // 규모는 값이 있는 컬럼 수로 본다 — 이름 없는 컬럼(헤더 없는 표의 col1…)도 자료다. 이름으로 세면 헤더 없는 표가
+        // 통째로 격리됐다(실측 2026-09-25: WBS_미완료 재적재 후 24행 · 유효 0개 → 0점). 이름이 없는 것은 구조 점수가 깎는다
+        if (rows < 3 || cols.size() < 2) {
             score = 0;
             verdict = "REJECTED";
-            reason = "규모 하한 미달 — 데이터 " + rows + "행 · 유효 컬럼 " + valid + "개 (최소 3행 · 2개)";
+            reason = "규모 하한 미달 — 데이터 " + rows + "행 · 값 있는 컬럼 " + cols.size() + "개 (최소 3행 · 2개)";
             bd.put("scale", reason);
         } else {
             int n = cols.size();
@@ -124,6 +126,7 @@ public class QualificationService {
             verdict = score >= QUALIFIED ? "QUALIFIED" : score >= PROVISIONAL ? "PROVISIONAL" : "REJECTED";
             reason = rows + "행 · 컬럼 " + n + "개(유효 " + valid + ") · 사전 " + lex + " · 바인딩 " + (bound == null ? 0 : bound)
                     + (headerSuspect ? " · 헤더 의심(재적재 권장)" : "")
+                    + (valid == 0 ? " · 헤더 없음(컬럼 이름 지정 필요)" : "")
                     + (time ? " · 시간축" : "") + (status ? " · 상태축" : "");
         }
         String now = LocalDateTime.now().format(TS);
