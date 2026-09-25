@@ -49,6 +49,10 @@ unittest:
 logging:
   level:
     com.aegis.pm: INFO
+  # 콘솔 로그는 콘솔 인코딩으로 쓴다 — 기본(UTF-8)이면 한국어 Windows 콘솔(MS949)에서 한글이 깨진다(실측 2026-09-25).
+  # stdout.encoding 은 JVM 이 기동 시 콘솔 코드페이지에서 정한다(chcp 65001 이면 UTF-8)
+  charset:
+    console: ${stdout.encoding:UTF-8}
 
 # 쓰기 API 보호 (TODO P0 #3) — POST/PUT/DELETE 에 X-API-Key 헤더를 요구한다.
 #   빈 값이면 **검사하지 않는다**: 로컬 개발·테스트가 그대로 돌아가게 하기 위한 의도된 기본값.

@@ -100,4 +100,17 @@ class PiiCryptoTest {
         assertFalse(PiiRegistry.isP3("SCR-000123"));
         assertFalse(PiiRegistry.isP3("67.93"));
     }
+
+    @Test
+    void 보호된_채_쌓인_DB를_키_없이_띄우면_거절한다() {
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(
+                new org.springframework.jdbc.datasource.DriverManagerDataSource("jdbc:h2:mem:piiguard;DB_CLOSE_DELAY=-1", "sa", ""));
+        jdbc.execute("CREATE TABLE pii_vault (token VARCHAR(20))");
+        // 빈 금고(새 DB) — 키 없이도 기동은 된다(보호 전 상태)
+        assertFalse(new PiiVault(jdbc, "classpath:pii/pii_public.pem", "", "", false).enabled());
+        jdbc.update("INSERT INTO pii_vault VALUES ('PII-0123456789ab')");
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> new PiiVault(jdbc, "classpath:pii/pii_public.pem", "", "", false));
+        assertTrue(e.getMessage().contains("start.cmd"), e.getMessage());
+    }
 }

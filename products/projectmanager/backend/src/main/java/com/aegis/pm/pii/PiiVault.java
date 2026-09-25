@@ -54,6 +54,18 @@ public class PiiVault {
         this.privateKey = loadPrivate(privateKeyPath);
         this.reveal = reveal && privateKey != null;
         if (indexKey == null) {
+            // 이미 보호된 채 쌓인 DB 를 키 없이 띄우면 새로 들어오는 이름만 평문으로 섞인다 — 경고로는 못 막았다
+            // (실측 2026-09-25: .env 없이 기동돼 WARN 한 줄만 찍히고 정상 기동). 금고에 사람이 있으면 거절한다
+            Integer people = null;
+            try {
+                people = jdbc.queryForObject("SELECT COUNT(*) FROM pii_vault", Integer.class);
+            } catch (Exception e) {
+                // 금고 테이블이 없다 = 새 DB — 보호 전 상태라 평문 기동을 막을 근거가 없다
+            }
+            if (people != null && people > 0) {
+                throw new IllegalStateException("[개인정보] 이 DB는 보호가 켜진 채 쌓였습니다(금고 " + people
+                        + "명). 키 없이 띄우면 새 이름이 평문으로 섞입니다 — backend/start.cmd 로 실행하거나 PM_PII_INDEX_KEY 를 설정하세요");
+            }
             log.warn("[개인정보] 보호 **비활성** — PM_PII_INDEX_KEY 미설정. 성명이 평문으로 저장됩니다 (지침 G-2)");
         } else {
             log.info("[개인정보] 보호 활성 · 개인키 {} · 원문 표시 {}", privateKey == null ? "없음(마스킹만)" : "로드됨",

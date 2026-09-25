@@ -86,7 +86,8 @@ projectmanager/
 ```bash
 # 1) 백엔드
 cd backend
-./mvnw spring-boot:run          # Windows: mvnw.cmd spring-boot:run
+start.cmd                       # .env(개인정보 키·API 키)를 올린 뒤 기동 — mvnw 를 직접 부르면 .env 가 빠진다
+                                # 보호가 켜진 DB 를 키 없이 띄우면 기동을 거절한다(평문 섞임 방지)
 
 # 2) 프론트 (다른 터미널)
 cd frontend
