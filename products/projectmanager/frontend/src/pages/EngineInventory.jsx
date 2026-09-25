@@ -14,7 +14,7 @@ const OP = {
   DROP_EMPTY_COLUMN: '빈 열', NORMALIZE_NULL: '결측 표기', TRIM_SPACE: '공백', DATE_SERIAL_TO_ISO: '일련번호→날짜',
   DATE_FORMAT_UNIFY: '날짜 표기', NUMBER_UNFORMAT: '숫자 서식', NUMBER_RESIDUE: '숫자 아닌 값', NUMBER_OUTLIER: '이상치',
   DEDUPE_ROWS: '중복 행', PRE_HEADER_ROW: '헤더 위 행', SHEET_SKIPPED: '건너뛴 시트', PII_BLOCKED: '개인정보 차단',
-  MANUAL_EDIT: '직접 수정',
+  MANUAL_EDIT: '직접 수정', COLUMN_RENAME: '이름 변경',
 };
 const STAGE = { INGEST: '적재', REFINE: '정제', EDIT: '수정' };
 const VERDICT = { QUALIFIED: '정식', PROVISIONAL: '보완 필요', REJECTED: '격리' };
@@ -97,6 +97,12 @@ export default function EngineInventory() {
   const undo = (id, t) =>
     act(() => send(`/engine/edit/${id}`, 'PUT', { row: t.row_ref, col: t.col_name, value: t.before_v ?? '' }), () => '되돌림 — 이전 값으로 수정');
 
+  const rename = (id, col) => {
+    const v = window.prompt(`컬럼 이름 바꾸기 — ${col}\n새 이름 (이력·복원 결정·위젯이 함께 옮겨지고, 정제본은 다시 만들어집니다)`, /^col\d+$/.test(col) ? '' : col);
+    if (v === null || !v.trim() || v.trim() === col) return;
+    act(() => send(`/engine/columns/${id}`, 'PUT', { [col]: v.trim() }), () => `이름 변경 — ${col} → ${v.trim()}`);
+  };
+
   const reverify = (g) =>
     act(() => send(`/engine/reverify/${g.group}`, 'POST'), (r) => `재검증 — 데이터셋 ${r.members}개 · 역할이 달라진 컬럼 ${r.roleChanges}개`
       + (r.roleChanges ? ` (${r.datasets.flatMap((d) => d.roleChanges).slice(0, 5).join(', ')})` : ''));
@@ -171,7 +177,9 @@ export default function EngineInventory() {
                         <tbody>
                           {profile.columns.map((c) => (
                             <tr key={c.name}>
-                              <td>{c.name}</td><td>{ROLE[c.role] || c.role}</td>
+                              <td style={{ whiteSpace: 'nowrap' }}>{c.name}
+                                <button className="btn sm" style={{ marginLeft: 4 }} title="이름 바꾸기" onClick={() => rename(d.dataset_id, c.name)}>✎</button></td>
+                              <td>{ROLE[c.role] || c.role}</td>
                               <td className="num">{Math.round(c.confidence * 100)}%</td><td className="muted">{c.evidence}</td>
                               <td className="num">{c.fill}</td><td className="num">{c.distinctRatio}</td>
                               <td className="num">{c.numericRatio}</td><td className="num">{c.dateRatio}</td>

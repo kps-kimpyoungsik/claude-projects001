@@ -153,6 +153,20 @@ class PiiFlowTest {
         assertEquals(List.of("D-1"), hit.stream().map(r -> r.get("defect_id")).toList());
     }
 
+    @Autowired com.aegis.pm.engine.EngineService engine;
+
+    @Test
+    void 이름없는_컬럼을_담당자로_바꾸면_그_칸이_토큰이_된다() {
+        datasets.write("DS-RP", "헤더 없음", "S", "f.xlsx", null, List.of("col1", "col2"),
+                List.of(Map.of("col1", "로그인", "col2", "최영수"), Map.of("col1", "메인", "col2", "최영수")));
+        assertTrue(jdbc.queryForObject("SELECT payload FROM dataset_row WHERE dataset_id='DS-RP' AND row_no=0", String.class)
+                .contains("최영수"), "전제: 이름 없는 칸은 개인정보 헤더가 아니라 원문 그대로 — 아니면 아래 검증이 무의미하다");
+        engine.renameColumns("DS-RP", Map.of("col2", "담당자"));
+        String payload = jdbc.queryForObject("SELECT payload FROM dataset_row WHERE dataset_id='DS-RP' AND row_no=0", String.class);
+        assertFalse(payload.contains("최영수"), "개인정보 헤더가 되면 저장 규칙(토큰)을 거쳐야 한다: " + payload);
+        assertTrue(datasets.findRow("DS-RP", "담당자", "최영수") >= 0, "원문으로 행을 찾을 수 있다");
+    }
+
     @Test
     void 업로드_시트는_담당자_칸만_토큰이고_고유식별정보는_저장하지_않는다() {
         datasets.write("DS-P", "투입인력", "S", "f.xlsx", null, List.of("화면명", "담당자", "비고"),

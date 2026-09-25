@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   POST /api/engine/restore/{id}     복원 {op, col?, row?} — 그 정제를 하지 않고 정제본 재생성
  *   POST /api/engine/unrestore/{id}   복원 취소
  *   PUT  /api/engine/edit/{id}        직접 수정 {row, col, value} — 원본 칸 수정 + EDIT 이력 + 정제본 재생성
+ *   PUT  /api/engine/columns/{id}     컬럼 이름 바꾸기 {이전: 새 이름} — 참조·이력 함께 옮김 + COLUMN_RENAME 이력
  *   GET  /api/engine/groups           자동 분류된 묶음 (비슷한 양식끼리)
  *   POST /api/engine/reverify/{group} 묶음 재검증 — 묶음 전체 자료로 역할 재판단
  *   POST /api/engine/reingest/{id}?header=N  봉인 원본에서 헤더 행 지정 재적재 (N: 1부터, 0=헤더 없음, 생략=자동)
@@ -72,6 +73,12 @@ public class EngineController {
     public Map<String, Object> edit(@PathVariable String id, @RequestBody Map<String, Object> b) {
         if (!(b.get("row") instanceof Number) || !(b.get("col") instanceof String)) throw new IllegalArgumentException("row·col 필요");
         return engine.edit(id, ((Number) b.get("row")).intValue(), (String) b.get("col"), b.get("value") == null ? "" : String.valueOf(b.get("value")));
+    }
+
+    /** 컬럼 이름 바꾸기 {"이전 이름": "새 이름", …} — 헤더 없는 표(col1…)에 이름 붙이기 */
+    @PutMapping("/columns/{id}")
+    public Map<String, Object> rename(@PathVariable String id, @RequestBody Map<String, String> renames) {
+        return engine.renameColumns(id, renames);
     }
 
     @GetMapping("/groups")

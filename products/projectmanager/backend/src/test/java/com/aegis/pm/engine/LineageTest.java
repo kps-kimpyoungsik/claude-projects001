@@ -94,6 +94,32 @@ class LineageTest {
         assertTrue(((List<?>) engine.traces("DS-T2").get("traces")).size() >= 1, "재저장해도 직접 수정 이력은 남는다");
     }
 
+    @Test
+    void 컬럼_이름을_바꾸면_이력과_결정이_따라오고_정제본도_새_이름이다() throws Exception {
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            Sheet s = wb.createSheet("시트");
+            row(s, 0, "재고 현황");
+            row(s, 1, "col1", "Qty");
+            for (int i = 0; i < 12; i++) row(s, 2 + i, "C-" + i, i == 3 ? "N/A" : String.valueOf(i * 10));
+            ingest.ingestSheet("DS-RN", "재고", s, "t.xlsx", null);
+        }
+        engine.apply("DS-RN");
+        engine.restore("DS-RN-R", "NORMALIZE_NULL", "Qty", 3);
+
+        Map<String, Object> r = engine.renameColumns("DS-RN-R", Map.of("col1", "코드", "Qty", "수량"));
+        assertEquals(Map.of("col1", "코드", "Qty", "수량"), r.get("renamed"));
+        assertEquals(List.of("코드", "수량"), writer.headers("DS-RN"));
+        assertEquals(List.of("코드", "수량"), writer.headers("DS-RN-R"), "정제본도 새 이름으로 다시 만들어진다");
+        assertEquals("N/A", writer.rows("DS-RN-R").get(3).get("수량"), "복원 결정이 새 이름을 따라간다");
+
+        List<Map<String, Object>> t = (List<Map<String, Object>>) engine.traces("DS-RN").get("traces");
+        assertTrue(t.stream().anyMatch(x -> "PRE_HEADER_ROW".equals(x.get("op"))), "적재 이력은 이름을 바꿔도 남는다 " + t);
+        assertTrue(t.stream().anyMatch(x -> "COLUMN_RENAME".equals(x.get("op")) && "Qty".equals(x.get("before_v")) && "수량".equals(x.get("after_v"))), t.toString());
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> engine.renameColumns("DS-RN", Map.of("코드", "수량")), "이름이 겹치면 거절");
+    }
+
     @Autowired com.aegis.pm.dds.QualificationService cqg;
 
     @Test

@@ -264,6 +264,72 @@ public class EngineService {
         return out;
     }
 
+    /**
+     * 컬럼 이름 바꾸기 — 헤더 없는 표(col1…)에 이름을 붙이거나 잘못된 이름을 고친다. {이전: 새 이름}.
+     * 저장은 writer 를 거친다: 새 이름이 개인정보 헤더(담당자 등)면 그 칸이 토큰으로 바뀌어야 하기 때문이다.
+     * 컬럼 이름을 참조하는 곳(사람 패싯·바인딩·위젯·복원 결정·이력)도 함께 옮기고, 적재 이력은 보존하고,
+     * 바꾼 사실은 EDIT 이력으로 남긴다. 정제본이 있으면 다시 만든다.
+     */
+    public Map<String, Object> renameColumns(String datasetId, Map<String, String> renames) {
+        String src = sourceOf(datasetId);
+        List<String> headers = headers(src);
+        if (renames == null || renames.isEmpty()) throw new IllegalArgumentException("바꿀 컬럼이 없습니다");
+        List<String> next = new ArrayList<>(headers);
+        for (Map.Entry<String, String> e : renames.entrySet()) {
+            int i = headers.indexOf(e.getKey());
+            String to = e.getValue() == null ? "" : e.getValue().replaceAll("\\s+", " ").trim();
+            if (i < 0) throw new IllegalArgumentException("없는 컬럼: " + e.getKey());
+            if (to.isEmpty() || to.length() > 180) throw new IllegalArgumentException("새 이름은 1~180자: " + e.getKey());
+            next.set(i, to);
+        }
+        if (new HashSet<>(next).size() != next.size()) throw new IllegalArgumentException("컬럼 이름이 겹칩니다");
+        Map<String, String> map = new LinkedHashMap<>();
+        for (int i = 0; i < headers.size(); i++) if (!headers.get(i).equals(next.get(i))) map.put(headers.get(i), next.get(i));
+        if (map.isEmpty()) throw new IllegalArgumentException("바뀐 이름이 없습니다");
+
+        List<Map<String, String>> rows = new ArrayList<>();
+        for (Map<String, String> r : datasets.rows(src, 0)) {
+            Map<String, String> c = new LinkedHashMap<>();
+            r.forEach((k, v) -> c.put(map.getOrDefault(k, k), v));
+            rows.add(c);
+        }
+        // 적재 이력은 재저장이 지운다(새 표와 안 맞는 이력을 지우는 규칙) — 이름만 바뀐 것이니 되살린다
+        List<TraceStore.Trace> ingest = new ArrayList<>();
+        for (Map<String, Object> t : traces.list(src)) {
+            if (!"INGEST".equals(t.get("stage")) || "PII_BLOCKED".equals(t.get("op"))) continue;
+            String col = (String) t.get("col_name");
+            ingest.add(new TraceStore.Trace("INGEST", (String) t.get("op"), t.get("row_ref") == null ? null : ((Number) t.get("row_ref")).intValue(),
+                    map.getOrDefault(col, col), (String) t.get("before_v"), (String) t.get("after_v")));
+        }
+        String ingestSource = traces.list(src).stream().filter(t -> "INGEST".equals(t.get("stage")))
+                .map(t -> (String) t.get("source_id")).filter(s -> s != null).findFirst().orElse(null);
+        map.forEach((from, to) -> {
+            for (String t : List.of("dataset_binding", "dashboard_widget")) jdbc.update("UPDATE " + t + " SET col_name = ? WHERE dataset_id = ? AND col_name = ?", to, src, from);
+            jdbc.update("UPDATE refine_decision SET col_name = ? WHERE source_id = ? AND col_name = ?", to, src, from);
+            jdbc.update("UPDATE refine_trace SET col_name = ? WHERE dataset_id IN (?, ?) AND col_name = ? AND stage = 'EDIT'", to, src, src + "-R", from);
+            for (Map<String, Object> f : Rows.lower(jdbc.queryForList(
+                    "SELECT * FROM dataset_facet WHERE dataset_id = ? AND col_name = ? AND source = 'human'", src, from))) {
+                jdbc.update("DELETE FROM dataset_facet WHERE facet_id = ?", f.get("facet_id"));
+                jdbc.update("""
+                        INSERT INTO dataset_facet (facet_id, axis, facet_value, target_type, dataset_id, col_name, confidence, source, evidence, updated_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)""", src + "|" + f.get("axis") + "|" + to, f.get("axis"), f.get("facet_value"),
+                        f.get("target_type"), src, to, f.get("confidence"), f.get("source"), f.get("evidence"), f.get("updated_at"));
+            }
+        });
+        Map<String, Object> d = Rows.lower(jdbc.queryForMap("SELECT * FROM dataset WHERE dataset_id = ?", src));
+        datasets.write(src, (String) d.get("name"), (String) d.get("sheet_name"), (String) d.get("source_file"), (String) d.get("batch_id"), next, rows);
+        traces.add(src, ingestSource, ingest);
+        List<TraceStore.Trace> renamed = new ArrayList<>();
+        map.forEach((from, to) -> renamed.add(new TraceStore.Trace("EDIT", "COLUMN_RENAME", null, to, from, to)));
+        traces.add(src, src, renamed);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("source", src);
+        out.put("renamed", map);
+        if (datasets.exists(src + "-R")) out.put("refine", apply(src));
+        return out;
+    }
+
     // ── 동적 분류(묶음) · 재검증 ──────────────────────────────────────────
 
     /**
